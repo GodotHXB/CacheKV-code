@@ -13,6 +13,7 @@
 namespace leveldb {
 
 extern uint32_t Hash(const char* data, size_t n, uint32_t seed);
+extern unsigned int Time33Hash(const char* str, unsigned int len, int sub_mem_count);
 
 }
 

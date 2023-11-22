@@ -9,6 +9,7 @@
 #include "leveldb/db.h"
 #include "db/dbformat.h"
 #include "db/skiplist.h"
+#include "db/btree.h"
 #include "util/arena.h"
 #include "util/BloomFilter.h"
 
@@ -121,15 +122,24 @@ public:
 		int operator()(const char* a, const char* b) const;
 	};
 	KeyComparator comparator_;
+
 	typedef SkipList<const char*, KeyComparator> Table;
 	Table sub_imm_skiplist;
     Table *sub_mem_skiplist;
+
+	// SkipList -> B+-Tree
+	btree sub_imm_Btree;
+    btree *sub_mem_Btree;
+
 	int *sub_mem_pending_node_index;
     std::vector<char*> *sub_mem_pending_node;
     std::deque<MemTable*> subImmQue;
 	std::atomic_bool isQueBusy;
 	
 	Table table_;
+	// SkipList -> B+-Tree
+	btree table_btree_;
+
 private:
 	~MemTable();  // Private since only Unref() should be used to delete it
 

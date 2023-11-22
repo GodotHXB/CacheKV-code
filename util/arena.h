@@ -5,11 +5,15 @@
 #ifndef STORAGE_LEVELDB_UTIL_ARENA_H_
 #define STORAGE_LEVELDB_UTIL_ARENA_H_
 
+#include <iostream>
 #include <vector>
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "port/port.h"
+#include "util/hash.h"
+#include "util/spinlock.h"
+#include "leveldb/slice.h"
 
 #include <atomic>
 #define _GNU_SOURCE
@@ -30,6 +34,7 @@ public:
 
     // Return a pointer to a newly allocated memory block of "bytes" bytes.
     char* Allocate(size_t bytes);
+    // char* AllocateByKey(size_t bytes, const Slice& key);
 
     // Allocate memory with the normal alignment guarantees provided by malloc
     virtual char* AllocateAligned(size_t bytes);
@@ -65,8 +70,13 @@ public:
     char* alloc_ptr_;
     size_t alloc_bytes_remaining_;
     bool isDataLock;
-    char** percore_alloc_ptr_;
-    size_t* percore_alloc_bytes_remaining_;
+
+
+    // char** percore_alloc_ptr_;
+    // size_t* percore_alloc_bytes_remaining_;
+    char** sub_mem_alloc_ptr_;
+    size_t* sub_mem_alloc_bytes_remaining;
+
     long cores;
     std::atomic_bool *sub_mem_bset;
     size_t sub_mem_count;
@@ -105,6 +115,7 @@ inline char* Arena::Allocate(size_t bytes) {
     return AllocateFallback(bytes);
 }
 
+
 class ArenaNVM : public Arena{
 public:
 #ifdef ENABLE_RECOVERY
@@ -122,6 +133,7 @@ public:
     char* AllocateAligned(size_t bytes);
     char* AllocateAlignedNVM(size_t bytes);
     char* Allocate(size_t bytes);
+    char* AllocateByKey(size_t bytes, Slice const& key);
     void* CalculateOffset(void* ptr);
     void* getMapStart();
     int alloc_sub_mem(int cpu);
@@ -141,28 +153,43 @@ public:
 
 inline char* ArenaNVM::Allocate(size_t bytes) {
     assert(bytes > 0);
+
+    SpinLock splock;
+    splock.lock();
     
-    if(!allocation && !AllocateFallbackNVM(bytes))
+    if(!allocation && !AllocateFallbackNVM(bytes)){
+        splock.unlock();
         return NULL;
+    }
+    
     unsigned int cpu;
     if(syscall(SYS_getcpu, &cpu, NULL, NULL)) {
         return NULL;
     }
-    if(bytes > percore_alloc_bytes_remaining_[cpu])
-        if(percore_alloc_ptr_[cpu]) {
+
+    // std::cout<<"cpu: "<<cpu<<std::endl;
+
+    if(bytes > sub_mem_alloc_bytes_remaining[cpu])
+        if(sub_mem_alloc_ptr_[cpu]) {
             if(swap_sub_mem(cpu) == -1)
+            {
+                splock.unlock();
                 return NULL;
+            } 
         }
         else {
-            if(alloc_sub_mem(cpu) == -1)
+            if(alloc_sub_mem(cpu) == -1){
+                splock.unlock();
                 return NULL;
+            }
         }
-    char* result = percore_alloc_ptr_[cpu];
-    percore_alloc_ptr_[cpu] += bytes;
-    percore_alloc_bytes_remaining_[cpu] -= bytes;
+    char* result = sub_mem_alloc_ptr_[cpu];
+    sub_mem_alloc_ptr_[cpu] += bytes;
+    sub_mem_alloc_bytes_remaining[cpu] -= bytes;
 #if defined(ENABLE_RECOVERY)
     memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
 #endif
+    splock.unlock();
     return result;
 
 
@@ -178,6 +205,50 @@ inline char* ArenaNVM::Allocate(size_t bytes) {
     }
     return AllocateFallbackNVM(bytes);
     */
+}
+
+inline char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
+    assert(bytes > 0);
+
+    SpinLock splock;
+    splock.lock();
+    
+    if(!allocation && !AllocateFallbackNVM(bytes)){
+        splock.unlock();
+        return NULL;
+    }
+    
+    const char* key_ptr = key.data();
+    unsigned int key_size = (unsigned int)key.size(); 
+    // std::cout<<"key: "<< key_ptr << std::endl;
+    // std::cout<<"key_size: "<< key_size << std::endl;
+    // std::cout<<"sub_mem_count: "<< sub_mem_count << std::endl;
+
+    unsigned int random_sub_mem_index = Time33Hash(key_ptr, key_size, sub_mem_count);  // randomly summon a index of sub-MemTable by hash algorithm
+
+    // std::cout<<"random_sub_mem_index: "<< random_sub_mem_index << std::endl;
+
+    if(bytes > sub_mem_alloc_bytes_remaining[random_sub_mem_index])
+        if(sub_mem_alloc_ptr_[random_sub_mem_index]) {
+            if(swap_sub_mem(random_sub_mem_index) == -1){
+                splock.unlock();
+                return NULL;
+            }
+        }
+        else {
+            if(alloc_sub_mem(random_sub_mem_index) == -1){
+                splock.unlock();
+                return NULL;
+            }
+        }
+    char* result = sub_mem_alloc_ptr_[random_sub_mem_index];
+    sub_mem_alloc_ptr_[random_sub_mem_index] += bytes;
+    sub_mem_alloc_bytes_remaining[random_sub_mem_index] -= bytes;
+#if defined(ENABLE_RECOVERY)
+    memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
+#endif
+    splock.unlock();
+    return result;
 }
 
 }  // namespace leveldb

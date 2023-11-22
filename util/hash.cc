@@ -5,6 +5,7 @@
 #include <string.h>
 #include "util/coding.h"
 #include "util/hash.h"
+#include "db/memtable.h"
 
 // The FALLTHROUGH_INTENDED macro can be used to annotate implicit fall-through
 // between switch labels. The real definition should be provided externally.
@@ -46,6 +47,16 @@ uint32_t Hash(const char* data, size_t n, uint32_t seed) {
       break;
   }
   return h;
+}
+
+unsigned int Time33Hash(const char* str, unsigned int len, int sub_mem_count){
+    unsigned int thash = 33;
+    unsigned int i = 0;
+
+    for(int i=0;i<len;i++){
+        thash = ((thash << 5) + thash) + (str[i]);
+    }
+    return (thash & 0x7FFFFFFF) % sub_mem_count;
 }
 
 

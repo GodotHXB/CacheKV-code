@@ -8,6 +8,7 @@
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
 #include "util/coding.h"
+#include "util/spinlock.h"
 #include "db/skiplist.h"
 #include "port/cache_flush.h"
 #include <cstdio>
@@ -219,10 +220,12 @@ void MemTable::Add(SequenceNumber s, ValueType type,
             VarintLength(internal_key_size) + internal_key_size +
             VarintLength(val_size) + val_size;
     char* buf = NULL;
+    
 retry:
     ArenaNVM *nvm_arena = (ArenaNVM *)&arena_;
     if(arena_.nvmarena_) {
-        buf = nvm_arena->Allocate(encoded_len);
+        buf = nvm_arena->AllocateByKey(encoded_len, key);
+        // buf = nvm_arena->Allocate(encoded_len);
     }else {
         buf = arena_.Allocate(encoded_len);
     }
