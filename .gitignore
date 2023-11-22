@@ -1,0 +1,4 @@
+﻿out-shared/
+out-static/
+hoard/libhoard.so
+build_config.mk

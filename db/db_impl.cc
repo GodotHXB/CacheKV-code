@@ -1941,56 +1941,56 @@ Status DB::Delete(const WriteOptions& opt, const Slice& key) {
     return Write(opt, &batch);
 }
 
-static int
-init_pqos(void)
-{
-    const struct pqos_cpuinfo *p_cpu = NULL;
-    const struct pqos_cap *p_cap = NULL;
-    struct pqos_config cfg;
-    int ret;
+// static int
+// init_pqos(void)
+// {
+//     const struct pqos_cpuinfo *p_cpu = NULL;
+//     const struct pqos_cap *p_cap = NULL;
+//     struct pqos_config cfg;
+//     int ret;
 
-    memset(&cfg, 0, sizeof(cfg));
-    cfg.fd_log = STDOUT_FILENO;
-    cfg.verbose = 0;
-    ret = pqos_init(&cfg);
-    if (ret != PQOS_RETVAL_OK) {
-        printf("Error initializing PQoS library!\n");
-        return -1;
-    }
+//     memset(&cfg, 0, sizeof(cfg));
+//     cfg.fd_log = STDOUT_FILENO;
+//     cfg.verbose = 0;
+//     ret = pqos_init(&cfg);
+//     if (ret != PQOS_RETVAL_OK) {
+//         printf("Error initializing PQoS library!\n");
+//         return -1;
+//     }
 
-    ret = pqos_cap_get(&p_cap, &p_cpu);
-    if (ret != PQOS_RETVAL_OK) {
-        pqos_fini();
-        printf("Error retrieving PQoS capabilities!\n");
-        return -1;
-    }
+//     ret = pqos_cap_get(&p_cap, &p_cpu);
+//     if (ret != PQOS_RETVAL_OK) {
+//         pqos_fini();
+//         printf("Error retrieving PQoS capabilities!\n");
+//         return -1;
+//     }
 
-    ret = pqos_alloc_reset(PQOS_REQUIRE_CDP_ANY, PQOS_REQUIRE_CDP_ANY,
-                            PQOS_MBA_ANY);
-    if (ret != PQOS_RETVAL_OK) {
-        pqos_fini();
-        printf("Error resetting CAT!\n");
-        return -1;
-    }
+//     ret = pqos_alloc_reset(PQOS_REQUIRE_CDP_ANY, PQOS_REQUIRE_CDP_ANY,
+//                             PQOS_MBA_ANY);
+//     if (ret != PQOS_RETVAL_OK) {
+//         pqos_fini();
+//         printf("Error resetting CAT!\n");
+//         return -1;
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
 
-static int
-close_pqos(void)
-{
-    int ret_val = 0;
+// static int
+// close_pqos(void)
+// {
+//     int ret_val = 0;
 
-    if (pqos_fini() != PQOS_RETVAL_OK) {
-        printf("Error shutting down PQoS library!\n");
-        ret_val = -1;
-    }
+//     if (pqos_fini() != PQOS_RETVAL_OK) {
+//         printf("Error shutting down PQoS library!\n");
+//         ret_val = -1;
+//     }
 
-    return ret_val;
-}
+//     return ret_val;
+// }
 
 DB::~DB() {
-    close_pqos();
+    // close_pqos();
  }
 
 Status DB::Open(const Options& options, const std::string& dbname_disk,
@@ -2025,9 +2025,9 @@ Status DB::Open(const Options& options, const std::string& dbname_disk,
                 impl->logfile_ = lfile;
                 impl->log_ = new log::Writer(lfile);
                 if (impl->mem_ == NULL) {
-                    if (init_pqos() != 0) {
-                        (void)close_pqos();
-                    }
+                    // if (init_pqos() != 0) {
+                    //     (void)close_pqos();
+                    // }
 #if defined(ENABLE_RECOVERY)
                     uint64_t new_map_number = impl->versions_->NewFileNumber();
                     size_t size = 0;
