@@ -128,8 +128,8 @@ public:
     Table *sub_mem_skiplist;
 
 	// SkipList -> B+-Tree
-	btree sub_imm_Btree;
-    btree *sub_mem_Btree;
+	Btree sub_imm_Btree;
+    Btree *sub_mem_Btree;
 
 	int *sub_mem_pending_node_index;
     std::vector<char*> *sub_mem_pending_node;
@@ -137,8 +137,9 @@ public:
 	std::atomic_bool isQueBusy;
 	
 	Table table_;
+
 	// SkipList -> B+-Tree
-	btree table_btree_;
+	Btree table_btree_;
 
 private:
 	~MemTable();  // Private since only Unref() should be used to delete it
