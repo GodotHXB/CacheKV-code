@@ -19,6 +19,8 @@
 
 #define NUMEMTABLE 0
 #define NUMEMTABLE_NVM 10
+#define KEYSIZE 16
+#define VALSIZE 64
 
 
 namespace leveldb {

@@ -28,6 +28,10 @@ public:
 
   entry_key_t key() const;
 
+  Btree* GetBtree() const;
+
+  Page* GetCurPage() const;
+
   void* value() const;
 
 private:

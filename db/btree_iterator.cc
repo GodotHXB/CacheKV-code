@@ -118,6 +118,14 @@ entry_key_t BtreeIterator::key() const {
   return cur->key;
 }
 
+Btree* BtreeIterator::GetBtree() const {
+  return btree;
+}
+
+Page* BtreeIterator::GetCurPage() const {
+  return cur_page;
+}
+
 void* BtreeIterator::value() const {
   return cur->ptr;
 }

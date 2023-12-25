@@ -4,6 +4,8 @@
 
 #include "db/memtable.h"
 #include "db/dbformat.h"
+#include "db/btree.h"
+#include "db/btree_iterator.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
@@ -64,6 +66,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp)
   table_(comparator_, &arena_),
   sub_imm_skiplist(comparator_, &arena_) {
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_);
+    // Skiplist -> B+-Tree
+    for (int i = 0; i < arena_.sub_mem_count; i++) {
+        sub_mem_btree.push_back(new Btree());
+    }
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
     isQueBusy.store(0);
@@ -84,6 +90,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
   sub_imm_skiplist(comparator_, &arena_, recovery) {
     arena_.nvmarena_ = arena.nvmarena_;
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_, recovery);
+    // Skiplist -> B+-Tree
+    for (int i = 0; i < arena_.sub_mem_count; i++) {
+        sub_mem_btree.push_back(new Btree());
+    }
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
     isQueBusy.store(0);
@@ -96,6 +106,8 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
 MemTable::~MemTable() {
     assert(refs_ == 0);
     delete[] sub_mem_skiplist;
+    // Skiplist -> B+-Tree
+    // delete[] sub_mem_btree;
     free(sub_mem_pending_node_index);
     delete[] sub_mem_pending_node;
 }
@@ -220,6 +232,10 @@ void MemTable::Add(SequenceNumber s, ValueType type,
             VarintLength(internal_key_size) + internal_key_size +
             VarintLength(val_size) + val_size;
     char* buf = NULL;
+
+    const char* key_data = key.data();
+    // printf("%s %d\n", key_data, key_size);
+    // std::cout<<key_data<<std::endl;
     
 retry:
     ArenaNVM *nvm_arena = (ArenaNVM *)&arena_;
@@ -237,13 +253,16 @@ retry:
         exit(-1);
     }
 
-    char* p = EncodeVarint32(buf, internal_key_size);
+    // std::cout<<"internal_key_size:"<<internal_key_size<<std::endl;
+    char* p = EncodeVarint32(buf, internal_key_size); // internal_key_size转为varint -> buf
+
 
     //TODO: Disabling the STM transaction library in this beta
     //Some performance issues if cores are not rightly pinned
     //to NUMA nodes. Simply adding the memory copy persist
     //Will be re-enabled in next version soon.
     if (this->isNVMMemtable == true) {
+        // std::cout<<"key_size:"<<key_size<<std::endl;
         memcpy(p, key.data(), key_size);
     }else{
         memcpy(p, key.data(), key_size);
@@ -258,7 +277,7 @@ retry:
     p += key_size;
     EncodeFixed64(p, (s << 8) | type);
     p += 8;
-    p = EncodeVarint32(p, val_size);
+    p = EncodeVarint32(p, val_size); // val_size 转为 varint -> buf
 
     if (this->isNVMMemtable == true) {
           memcpy(p, value.data(), val_size);
@@ -291,45 +310,103 @@ retry:
 }
 
 
+// bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
+
+//     Slice memkey = key.memtable_key();
+//     Table::Iterator iter(&table_);
+//     iter.Seek(memkey.data());
+//     if (iter.Valid()) {
+//         // entry format is:
+//         //    klength  varint32
+//         //    userkey  char[klength]
+//         //    tag      uint64
+//         //    vlength  varint32
+//         //    value    char[vlength]
+//         // Check that it belongs to same user key.  We do not check the
+//         // sequence number since the Seek() call above should have skipped
+//         // all entries with overly large sequence numbers.
+// #if defined(USE_OFFSETS)
+//         const char* entry = reinterpret_cast<const char *>((intptr_t)iter.key_offset());
+// #else
+//         const char* entry = iter.key();
+// #endif
+//         uint32_t key_length;
+//         const char* key_ptr = GetVarint32Ptr(entry, entry+5, &key_length);
+//         if (comparator_.comparator.user_comparator()->Compare(
+//                 Slice(key_ptr, key_length - 8),
+//                 key.user_key()) == 0) {
+//             // Correct user key
+//             const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
+//             switch (static_cast<ValueType>(tag & 0xff)) {
+//             case kTypeValue: {
+//                 Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+//                 value->assign(v.data(), v.size());
+//                 return true;
+//             }
+//             case kTypeDeletion:
+//                 *s = Status::NotFound(Slice());
+//                 return true;
+//             }
+//         }
+//     }
+//     return false;
+// }
+
+// B+-Tree version
+// 搜索每个子B树不成功
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
 
-    Slice memkey = key.memtable_key();
-    Table::Iterator iter(&table_);
-    iter.Seek(memkey.data());
-    if (iter.Valid()) {
-        // entry format is:
-        //    klength  varint32
-        //    userkey  char[klength]
-        //    tag      uint64
-        //    vlength  varint32
-        //    value    char[vlength]
-        // Check that it belongs to same user key.  We do not check the
-        // sequence number since the Seek() call above should have skipped
-        // all entries with overly large sequence numbers.
-#if defined(USE_OFFSETS)
-        const char* entry = reinterpret_cast<const char *>((intptr_t)iter.key_offset());
-#else
-        const char* entry = iter.key();
-#endif
-        uint32_t key_length;
-        const char* key_ptr = GetVarint32Ptr(entry, entry+5, &key_length);
-        if (comparator_.comparator.user_comparator()->Compare(
-                Slice(key_ptr, key_length - 8),
-                key.user_key()) == 0) {
-            // Correct user key
-            const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-            switch (static_cast<ValueType>(tag & 0xff)) {
-            case kTypeValue: {
-                Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
-                value->assign(v.data(), v.size());
-                return true;
-            }
-            case kTypeDeletion:
-                *s = Status::NotFound(Slice());
-                return true;
-            }
+    Slice memkey = key.user_key();
+    int64_t key_data_int64 = atoi(memkey);
+    // BtreeIterator iter_btree(sub_mem_btree);
+    // iter_btree.Seek(key_data_int64);
+
+    for(int i=0; i<arena_.sub_mem_count; i++){
+        if(!arena_.sub_mem_bset[i].load() || !arena_.sub_immem_bset[i].load()){
+            continue;
         }
-    }
+        BtreeIterator iter_btree(sub_mem_btree[i]);
+        iter_btree.Seek(key_data_int64);
+        if(iter_btree.Valid()){
+            std::cout<<"in MemTable::Get  key: "<<iter_btree.key()<<", value:"<<(char *)iter_btree.value()<<std::endl;
+            if(iter_btree.key() != key_data_int64){
+                std::cout<<"Key Not Found"<<std::endl;
+                continue;
+            }
+            else break;
+        }  
+    } // seek key-value pair in sub-memtables
+
+    // if(iter_btree.Valid()){
+    //     std::cout<<"in MemTable::Get  key: "<<iter_btree.key()<<", value:"<<(char *)iter_btree.value()<<std::endl;
+    //     // iter_btree.GetCurPage()->print();
+    // }
+
+//     if (iter_btree.Valid()) {
+// #if defined(USE_OFFSETS)
+//         const char* entry = reinterpret_cast<const char *>((intptr_t)iter.key_offset());
+// #else
+//         const char* entry = iter.key();
+// #endif
+//         uint32_t key_length;
+//         const char* key_ptr = GetVarint32Ptr(entry, entry+5, &key_length);
+//         if (comparator_.comparator.user_comparator()->Compare(
+//                 Slice(key_ptr, key_length - 8),
+//                 key.user_key()) == 0) {
+//             // Correct user key
+//             const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
+//             switch (static_cast<ValueType>(tag & 0xff)) {
+//             case kTypeValue: {
+//                 Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+//                 value->assign(v.data(), v.size());
+//                 return true;
+//             }
+//             case kTypeDeletion:
+//                 *s = Status::NotFound(Slice());
+//                 return true;
+//             }
+//         }
+//     }
     return false;
 }
 
@@ -338,14 +415,16 @@ bool MemTable::Get_submem(const LookupKey& key, std::string* value, Status* s){
     Table::Iterator iter(&table_);
 
     for(int i=0; i<arena_.sub_mem_count; i++){
-        if(!arena_.sub_mem_bset[i].load() || !arena_.sub_immem_bset[i].load())
+        if(!arena_.sub_mem_bset[i].load() || !arena_.sub_immem_bset[i].load()){
             continue;
+        }
         iter.list_ = &sub_mem_skiplist[i];
         iter.node_ = NULL;
         iter.Seek(memkey.data());
         if(iter.Valid())
             break;
-    }
+    } // seek key-value pair in sub-memtables
+
 
     if (iter.Valid()) {
 #if defined(USE_OFFSETS)
@@ -374,6 +453,8 @@ bool MemTable::Get_submem(const LookupKey& key, std::string* value, Status* s){
     }
     return false;
 }
+
+
 
 
 }  // namespace leveldb

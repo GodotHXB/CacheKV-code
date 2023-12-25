@@ -22,7 +22,7 @@ public:
     void lock(){   //acquire spin lock
         bool expected = false;
         while(!flag.compare_exchange_strong(expected, true));
-            expected = false;    
+        expected = false;    
     }   
     void unlock(){   //release spin lock
         flag.store(false);

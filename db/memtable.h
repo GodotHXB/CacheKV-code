@@ -10,6 +10,7 @@
 #include "db/dbformat.h"
 #include "db/skiplist.h"
 #include "db/btree.h"
+#include "db/btree_iterator.h"
 #include "util/arena.h"
 #include "util/BloomFilter.h"
 
@@ -128,24 +129,26 @@ public:
     Table *sub_mem_skiplist;
 
 	// SkipList -> B+-Tree
-	Btree sub_imm_Btree;
-    Btree *sub_mem_Btree;
+	Btree sub_imm_btree;
+    std::vector<Btree *>sub_mem_btree;
 
 	int *sub_mem_pending_node_index;
     std::vector<char*> *sub_mem_pending_node;
     std::deque<MemTable*> subImmQue;
 	std::atomic_bool isQueBusy;
 	
-	Table table_;
+	Table table_; // global skip list
 
 	// SkipList -> B+-Tree
-	Btree table_btree_;
+	Btree table_btree_; // global btree
 
 private:
 	~MemTable();  // Private since only Unref() should be used to delete it
 
 	friend class MemTableIterator;
 	friend class MemTableBackwardIterator;
+
+	friend class BtreeIterator;
 
 	int refs_;
 

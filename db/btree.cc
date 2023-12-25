@@ -820,17 +820,20 @@ namespace leveldb{
     }
 
     // insert the key in the leaf node
-    void Btree::btree_insert(entry_key_t key, char *right) { // need to be string
+    void Btree::Insert(entry_key_t key, char *right) { // need to be string
         Page *p = (Page *)root;
 
         while (p->hdr.leftmost_ptr != NULL) {
-        p = (Page *)p->linear_search(key);
+            p = (Page *)p->linear_search(key);
         }
 
         if (!p->store(this, NULL, key, right, true, true)) { // store
-        btree_insert(key, right);
+            Btree::Insert(key, right);
         }
     }
+
+
+
 
     // store the key into the node at the given level
     void Btree::btree_insert_internal(char *left, entry_key_t key, char *right,
@@ -934,6 +937,11 @@ namespace leveldb{
         }
     }
 
+    Btree* Btree::merge_two_btree(Btree* bt1, Btree* bt2){
+        
+    }
+
+
     void Btree::printAll() {
         pthread_mutex_lock(&print_mtx);
         int total_keys = 0;
@@ -955,4 +963,9 @@ namespace leveldb{
         printf("total number of keys: %d\n", total_keys);
         pthread_mutex_unlock(&print_mtx);
     }
+
+    BtreeIterator* Btree::getIterator(){
+        return new BtreeIterator(this);
+    }
+
 }

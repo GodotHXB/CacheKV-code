@@ -50,7 +50,7 @@ uint32_t Hash(const char* data, size_t n, uint32_t seed) {
 }
 
 unsigned int Time33Hash(const char* str, unsigned int len, int sub_mem_count){
-    unsigned int thash = 33;
+    unsigned int thash = 5381;
     unsigned int i = 0;
 
     for(int i=0;i<len;i++){

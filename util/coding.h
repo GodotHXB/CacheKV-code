@@ -99,6 +99,53 @@ inline const char* GetVarint32Ptr(const char* p,
   return GetVarint32PtrFallback(p, limit, value);
 }
 
+inline uint64_t atoi(const char* str, size_t size) {
+  uint64_t val = 0;
+  while(size-- > 0 && *str && *str >= '0' && *str <= '9') {
+    val = val*10 + (*str++ - '0');
+  }
+  return val;
+}
+
+inline uint64_t atoi(Slice slice) {
+  return atoi(slice.data(), slice.size());
+}
+
 }  // namespace leveldb
+
+//实现itoa功能
+inline char* itoa(uint64_t val, char* buf, int base) {
+  static char num[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+  char* p = buf;
+  char* p1, *p2;
+  uint64_t ud = val;
+  int divisor = 10;
+
+  if (base == 'd' && val < 0) {
+    *p++ = '-';
+    buf++;
+    ud = -val;
+  } else if (base == 'x') {
+    divisor = 16;
+  }
+
+  do {
+    int remainder = ud % divisor;
+    *p++ = num[remainder];
+  } while (ud /= divisor);
+
+  *p = 0;
+  p1 = buf;
+  p2 = p - 1;
+  while (p1 < p2) {
+    char tmp = *p1;
+    *p1++ = *p2;
+    *p2-- = tmp;
+  }
+
+  return buf;
+}
+
+
 
 #endif  // STORAGE_LEVELDB_UTIL_CODING_H_

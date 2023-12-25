@@ -855,7 +855,6 @@ private:
     }
 
     void ReadRandom(ThreadState* thread) {
-
         ReadOptions options;
         std::string value;
         int found = 0;
@@ -876,7 +875,9 @@ private:
             k = thread->rand.Next() % FLAGS_num;
 #endif
             snprintf(key, sizeof(key), "%016d", k);
+            std::cout<<"key:"<<key<<std::endl;
             if (db_->Get(options, key, &value).ok()) {
+                std::cout<<"in db_bench  get  key:"<<key<<", value:"<<value<<std::endl;
                 bytes += strlen(key) + value.size();
                 //printf("Finished reading %d\n", i);
                 found++;

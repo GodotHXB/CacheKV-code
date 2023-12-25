@@ -14,7 +14,8 @@
 
 #include <unistd.h>
 #include <atomic>
-#define SKIPLIST_ALLOC_SIZE 2097152 
+#define SKIPLIST_ALLOC_SIZE 2097152
+#define BTREE_ALLOC_SIZE 2097152
 
 #include <pqos.h>
 #define MAX_L3CAT_NUM 16
@@ -137,6 +138,23 @@ char* Arena::AllocateFallback_submemIndex(size_t bytes, int sub_mem_index) {
     return result;
 }
 
+
+// B+-Tree version
+// char* Arena::AllocateFallback_submemIndex_Btree(size_t bytes, int sub_mem_index) {
+
+//     char *result = NULL;
+//     // std::cout<<"btree allocated : sub_mem_index = "<<sub_mem_index<<std::endl;
+
+//     btree_alloc_ptr_[sub_mem_index] = AllocateNewBlock(BTREE_ALLOC_SIZE);
+//     btree_alloc_bytes_remaining_[sub_mem_index] = BTREE_ALLOC_SIZE;
+
+//     result = btree_alloc_ptr_[sub_mem_index];
+//     btree_alloc_ptr_[sub_mem_index] += bytes;
+//     btree_alloc_bytes_remaining_[sub_mem_index] -= bytes;
+//     return result;
+// }
+
+
 char* Arena::AllocateAligned_submemIndex(size_t bytes, int sub_mem_index) {
     const int align = (sizeof(void*) > 8) ? sizeof(void*) : 8;
     assert((align & (align-1)) == 0);   // Pointer size should be a power of 2
@@ -156,6 +174,28 @@ char* Arena::AllocateAligned_submemIndex(size_t bytes, int sub_mem_index) {
     assert((reinterpret_cast<uintptr_t>(result) & (align-1)) == 0);
     return result;
 }
+
+// B+-Tree version
+// char* Arena::AllocateAligned_submemIndex_Btree(size_t bytes, int sub_mem_index) {
+
+//     const int align = (sizeof(void*) > 8) ? sizeof(void*) : 8;
+//     assert((align & (align-1)) == 0);   // Pointer size should be a power of 2
+//     size_t current_mod = reinterpret_cast<uintptr_t>(alloc_ptr_) & (align-1);
+//     size_t slop = (current_mod == 0 ? 0 : align - current_mod);
+//     size_t needed = bytes + slop;
+//     char* result;
+//     if (needed <= btree_alloc_bytes_remaining_[sub_mem_index]) {
+//         result = btree_alloc_ptr_[sub_mem_index] + slop;
+//         btree_alloc_ptr_[sub_mem_index] += needed;
+//         btree_alloc_bytes_remaining_[sub_mem_index] -= needed;
+//     } else {
+//         // AllocateFallback always returned aligned memory
+//         result = AllocateFallback_submemIndex_Btree(bytes, sub_mem_index);
+//         btree_blocks[sub_mem_index].push_back(result);
+//     }
+//     assert((reinterpret_cast<uintptr_t>(result) & (align-1)) == 0);
+//     return result;
+// }
 
 char* Arena::AllocateNewBlock(size_t block_bytes) {
     char* result = NULL;
@@ -213,7 +253,6 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
     }
     sub_mem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
 
-    // std::cout<<"defined sub_mem_count: "<<sub_mem_count<<std::endl;
     sub_immem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
     sub_immem_count = 0;
     in_trans_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
@@ -222,12 +261,20 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
     skiplist_alloc_ptr_ = (char**)malloc(sizeof(char*) * size / SUB_MEM_SIZE);
     skiplist_alloc_bytes_remaining_ = (size_t*)malloc(sizeof(size_t) * size / SUB_MEM_SIZE);
 
+    // Skiplist -> B+-Tree
+    btree_blocks = new std::vector<char*>[size / SUB_MEM_SIZE];
+    btree_alloc_ptr_ = (char**)malloc(sizeof(char*) * size / SUB_MEM_SIZE);
+    btree_alloc_bytes_remaining_ = (size_t*)malloc(sizeof(size_t) * size / SUB_MEM_SIZE);
+
+
     for(int i=0; i<sub_mem_count; i++) {
         sub_mem_bset[i] = 0;
         sub_immem_bset[i] = 0;
         in_trans_bset[i] = 0;
         skiplist_alloc_ptr_[i] = NULL;
         skiplist_alloc_bytes_remaining_[i] = 0;
+        btree_alloc_ptr_[i] = NULL;
+        btree_alloc_bytes_remaining_[i] = 0;
     }
 }
 #else
@@ -298,9 +345,9 @@ void ArenaNVM::reclaim_sub_mem(int sub_mem_index){
 }
 
 void ArenaNVM::setSubMemToImm(){
-    long online_core;
-    online_core = sysconf(_SC_NPROCESSORS_ONLN);
-    for(int i=0; i<online_core; i++) {
+    // long online_core;
+    // online_core = sysconf(_SC_NPROCESSORS_ONLN);
+    for(int i=0; i<sub_mem_count; i++) {
         sub_mem_alloc_ptr_[i] = NULL;
         sub_mem_alloc_bytes_remaining[i] = 0;
     }

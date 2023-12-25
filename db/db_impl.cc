@@ -897,8 +897,21 @@ void DBImpl::skiplistBackgroundSync(void *db) {
             if(index < pending) {
                 char *buf;
                 for(int j=index; j<pending; j++){
+                    char *key_data = (char*)malloc(KEYSIZE+1);
+                    char *val_data = (char*)malloc(VALSIZE+1);
                     buf = tmp_mem->sub_mem_pending_node[i][j];
+                    // need to dynamically change the VALSIZE 
+                    memcpy(key_data, buf+1, KEYSIZE); // buf+1 to skip the key length byte
+                    memcpy(val_data, buf+1+KEYSIZE+8+1, VALSIZE);
+                    key_data[KEYSIZE] = '\0';
+                    val_data[VALSIZE] = '\0';
                     tmp_mem->sub_mem_skiplist[i].Insert(buf);
+                    // Skiplist -> B+-Tree
+                    int64_t key_data_int64 = atoi(key_data); // convert key to int64
+                    // std::cout<<key_data_int64<<std::endl;
+                    tmp_mem->sub_mem_btree[i]->Insert(key_data_int64, val_data);
+                    free(key_data);
+                    free(val_data);
                 }
                 tmp_mem->sub_mem_pending_node_index[i] = pending;
             }
@@ -907,6 +920,7 @@ void DBImpl::skiplistBackgroundSync(void *db) {
     }
     reinterpret_cast<DBImpl*>(db)->inSkiplistBgSync.store(0);
 }
+
 
 
 
@@ -996,6 +1010,7 @@ retry:
     goto retry;
 }
 
+// Compaction of Sub-Skiplists
 void DBImpl::compactImm(void* db) {
     if(!reinterpret_cast<DBImpl*>(db)->inCompactImm.load() 
     && !reinterpret_cast<DBImpl*>(db)->inCompactImm.exchange(1)){
@@ -1563,6 +1578,7 @@ bool DBImpl::CheckSearchCondition(MemTable* mem){
     return true;
 }
 
+
 Status DBImpl::Get(const ReadOptions& options,
                    const Slice& key,
                    std::string* value) {
@@ -1572,7 +1588,7 @@ Status DBImpl::Get(const ReadOptions& options,
     skiplistBackgroundSync((void*)this);
   }
   else {
-    while(!inSkiplistBgSync.load());
+    while(!inSkiplistBgSync.load()){};
   }
 
   if(mem_->subImmQue.size() && !inCompactImm.load()){
@@ -1588,7 +1604,6 @@ Status DBImpl::Get(const ReadOptions& options,
   }
 
   MemTable* mem = mem_;
-  g_mem = mem_;
   mem->Ref();
 
   Version::GetStats stats;
@@ -1596,7 +1611,7 @@ Status DBImpl::Get(const ReadOptions& options,
   {
     mutex_.Unlock();
     LookupKey lkey(key, snapshot);
-    if(mem->Get_submem(lkey, value, &s)) {}
+    if(mem_->Get_submem(lkey, value, &s)) {}
     else {
         mem_->Get(lkey, value, &s);
     }
@@ -1826,7 +1841,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
                 break;
     }
 
-    if(skiplistSync_threshold>0 && mem_->GetNumKeys()>1 && (mem_->GetNumKeys() % skiplistSync_threshold == 1) 
+    if(skiplistSync_threshold>0 && mem_->GetNumKeys()>1 && (mem_->GetNumKeys() % skiplistSync_threshold >= 2) 
     && !inSkiplistBgSync.load() && !inSkiplistBgSync.exchange(1)) {
         env_->Schedule(&DBImpl::skiplistBackgroundSync, (void*)this);
     }

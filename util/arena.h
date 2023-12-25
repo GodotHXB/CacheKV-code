@@ -41,6 +41,11 @@ public:
     char* AllocateAligned_submemIndex(size_t bytes, int sub_mem_index);
     char* AllocateFallback_submemIndex(size_t bytes, int sub_mem_index);
 
+    // Skiplist -> B+-Tree
+    char* AllocateAligned_submemIndex_Btree(size_t bytes, int sub_mem_index);
+    char* AllocateFallback_submemIndex_Btree(size_t bytes, int sub_mem_index);
+
+
     // Returns an estimate of the total memory usage of data allocated
     // by the arena.
     size_t MemoryUsage() const {
@@ -83,9 +88,16 @@ public:
     std::atomic_bool *sub_immem_bset;
     size_t sub_immem_count;
     std::atomic_bool *in_trans_bset;
+
     std::vector<char*> *skiplist_blocks;
     char** skiplist_alloc_ptr_;
     size_t *skiplist_alloc_bytes_remaining_;
+
+    // SkipList -> B+-Tree
+    std::vector<char*> *btree_blocks;
+    char** btree_alloc_ptr_;
+    size_t *btree_alloc_bytes_remaining_;
+
     size_t dlock_way;
     size_t dlock_size;
 
@@ -136,9 +148,9 @@ public:
     char* AllocateByKey(size_t bytes, Slice const& key);
     void* CalculateOffset(void* ptr);
     void* getMapStart();
-    int alloc_sub_mem(int cpu);
-    int swap_sub_mem(int cpu);
-    void reclaim_sub_mem(int cpu);
+    int alloc_sub_mem(int sub_mem_index);
+    int swap_sub_mem(int sub_mem_index);
+    void reclaim_sub_mem(int sub_mem_index);
     void setSubMemToImm();
     int init_memory(char* mmap_ptr, size_t sz);
     int dlock_exit(void);
@@ -167,7 +179,6 @@ inline char* ArenaNVM::Allocate(size_t bytes) {
         return NULL;
     }
 
-    // std::cout<<"cpu: "<<cpu<<std::endl;
 
     if(bytes > sub_mem_alloc_bytes_remaining[cpu])
         if(sub_mem_alloc_ptr_[cpu]) {

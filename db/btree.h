@@ -45,6 +45,7 @@ namespace leveldb{
   class Header;
   class Page;
   class Btree;
+  class BtreeIterator;
   // class MemTable;
 
   class Header {
@@ -161,8 +162,7 @@ namespace leveldb{
   public:
     Btree();
     void setNewRoot(char *);
-    void getNumberOfNodes();
-    void btree_insert(entry_key_t, char *);
+    void Insert(entry_key_t, char *);
     void btree_insert_internal(char *, entry_key_t, char *, uint32_t);
     void btree_delete(entry_key_t);
     void btree_delete_internal(entry_key_t, char *, uint32_t, entry_key_t *,
@@ -170,6 +170,9 @@ namespace leveldb{
     char *btree_search(entry_key_t);
     void btree_search_range(entry_key_t, entry_key_t, unsigned long *);
     void printAll();
+    Btree* merge_two_btree(Btree*, Btree*);
+
+    BtreeIterator* getIterator();
 
     friend class Page;
     friend class BtreeIterator;
