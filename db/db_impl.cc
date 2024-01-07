@@ -210,6 +210,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname_disk, const
     compactImm_threshold = options_.compactImm_threshold;
     subImm_partition = options_.subImm_partition;
     subImm_thread = options_.subImm_thread;
+    total_run_time = 0;
 
     has_imm_.Release_Store(NULL);
 
@@ -269,6 +270,9 @@ DBImpl::~DBImpl() {
 
     if(thpool && NUM_READ_THREADS)
         thpool_destroy(thpool);
+
+    std::cout<<"total compaction time: "<<total_run_time<<std::endl;
+    // this->mem_->table_btree_->printAll();
 }
 
 Status DBImpl::NewDB() {
@@ -897,21 +901,21 @@ void DBImpl::skiplistBackgroundSync(void *db) {
             if(index < pending) {
                 char *buf;
                 for(int j=index; j<pending; j++){
-                    char *key_data = (char*)malloc(KEYSIZE+1);
-                    char *val_data = (char*)malloc(VALSIZE+1);
+                    // char *key_data = (char*)malloc(KEYSIZE+1);
+                    // char *val_data = (char*)malloc(VALSIZE+1);
                     buf = tmp_mem->sub_mem_pending_node[i][j];
                     // need to dynamically change the VALSIZE 
-                    memcpy(key_data, buf+1, KEYSIZE); // buf+1 to skip the key length byte
-                    memcpy(val_data, buf+1+KEYSIZE+8+1, VALSIZE);
-                    key_data[KEYSIZE] = '\0';
-                    val_data[VALSIZE] = '\0';
+                    // memcpy(key_data, buf+1, KEYSIZE); // buf+1 to skip the key length byte
+                    // memcpy(val_data, buf+1+KEYSIZE+8+1, VALSIZE);
+                    // key_data[KEYSIZE] = '\0';
+                    // val_data[VALSIZE] = '\0';
                     tmp_mem->sub_mem_skiplist[i].Insert(buf);
                     // Skiplist -> B+-Tree
-                    int64_t key_data_int64 = atoi(key_data); // convert key to int64
+                    // int64_t key_data_int64 = atoi(key_data); // convert key to int64
                     // std::cout<<key_data_int64<<std::endl;
-                    tmp_mem->sub_mem_btree[i]->Insert(key_data_int64, val_data);
-                    free(key_data);
-                    free(val_data);
+                    // tmp_mem->sub_mem_btree[i]->Insert(key_data_int64, val_data);
+                    // free(key_data);
+                    // free(val_data);
                 }
                 tmp_mem->sub_mem_pending_node_index[i] = pending;
             }
@@ -1012,11 +1016,15 @@ retry:
 
 // Compaction of Sub-Skiplists
 void DBImpl::compactImm(void* db) {
+    clock_t start,end;
+    start = clock();
     if(!reinterpret_cast<DBImpl*>(db)->inCompactImm.load() 
     && !reinterpret_cast<DBImpl*>(db)->inCompactImm.exchange(1)){
 
     }
     else{
+        end = clock();
+        reinterpret_cast<DBImpl*>(db)->total_run_time += (double)(end-start)/CLOCKS_PER_SEC;
         return;
     }
 
@@ -1028,6 +1036,8 @@ loop:
         std::swap(tmp_subImmQue, tmp_mem->subImmQue);
     }
     else{
+        end = clock();
+        reinterpret_cast<DBImpl*>(db)->total_run_time += (double)(end-start)/CLOCKS_PER_SEC;
         return;
     }
     tmp_mem->isQueBusy.store(0);
@@ -1039,8 +1049,19 @@ loop:
         void *p;
         while(iter.Valid()){
             p = (void*)iter.node_;
+            // key_offset type: char *
+            char* key_offset = const_cast<char *>(iter.key_offset());
+            uint32_t key_length;
+            char* key_ptr = const_cast<char*>(GetVarint32Ptr(key_offset, key_offset+5, &key_length));
+            Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+            char* val_ptr = new char[v.size()+1];
+            memcpy(val_ptr, v.data(), v.size());
+            val_ptr[v.size()] = '\0';   // add '\0' to the end of val_ptr
+            // std::cout<<"val_ptr: "<<(void *)val_ptr<<std::endl;
+            // std::cout<<"val_data: "<<v.size()<<std::endl;
             iter.Next();
-            tmp_mem->table_.InsertNode(p);
+            // tmp_mem->table_.InsertNode(p);  // sub skiplists -> global skiplist
+            tmp_mem->table_btree_->Insert(key_ptr,val_ptr);  // sub skiplists -> global B+-Tree
         }
         reinterpret_cast<DBImpl*>(db)->compactImmQue.push_back(sub_imm);
     }
@@ -1049,6 +1070,8 @@ loop:
 		goto loop;
 	}
     reinterpret_cast<DBImpl*>(db)->inCompactImm.store(0);
+    end = clock();
+    reinterpret_cast<DBImpl*>(db)->total_run_time += (double)(end-start)/CLOCKS_PER_SEC;
 }
 
 
@@ -1603,7 +1626,7 @@ Status DBImpl::Get(const ReadOptions& options,
     snapshot = versions_->LastSequence();
   }
 
-  MemTable* mem = mem_;
+  MemTable* mem = mem_;  // mem_: global skiplist
   mem->Ref();
 
   Version::GetStats stats;
@@ -2032,7 +2055,7 @@ Status DB::Open(const Options& options, const std::string& dbname_disk,
             // Create new log and a corresponding memtable.
             uint64_t new_log_number = impl->versions_->NewFileNumber();
             WritableFile* lfile;
-            //Save log in disk for now
+            // Save log in disk for now
             s = options.env->NewWritableFile(LogFileName(dbname_disk, new_log_number),
                     &lfile);
             if (s.ok()) {

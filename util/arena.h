@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <vector>
+#include <pthread.h>
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -20,12 +21,14 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-#define SUB_MEM_SIZE 2097152 
+#define SUB_MEM_SIZE 2097152
+
 
 namespace leveldb {
 
 //Overprovision
 #define MEM_THRESH 1.5
+extern SpinLock splock;
 
 class Arena {
 public:
@@ -162,105 +165,6 @@ public:
     }
     // Total memory usage of the arena.
 };
-
-inline char* ArenaNVM::Allocate(size_t bytes) {
-    assert(bytes > 0);
-
-    SpinLock splock;
-    splock.lock();
-    
-    if(!allocation && !AllocateFallbackNVM(bytes)){
-        splock.unlock();
-        return NULL;
-    }
-    
-    unsigned int cpu;
-    if(syscall(SYS_getcpu, &cpu, NULL, NULL)) {
-        return NULL;
-    }
-
-
-    if(bytes > sub_mem_alloc_bytes_remaining[cpu])
-        if(sub_mem_alloc_ptr_[cpu]) {
-            if(swap_sub_mem(cpu) == -1)
-            {
-                splock.unlock();
-                return NULL;
-            } 
-        }
-        else {
-            if(alloc_sub_mem(cpu) == -1){
-                splock.unlock();
-                return NULL;
-            }
-        }
-    char* result = sub_mem_alloc_ptr_[cpu];
-    sub_mem_alloc_ptr_[cpu] += bytes;
-    sub_mem_alloc_bytes_remaining[cpu] -= bytes;
-#if defined(ENABLE_RECOVERY)
-    memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
-#endif
-    splock.unlock();
-    return result;
-
-
-    /*if (bytes <= alloc_bytes_remaining_) {
-        char* result = alloc_ptr_;
-        alloc_ptr_ += bytes;
-        alloc_bytes_remaining_ -= bytes;
-#if defined(ENABLE_RECOVERY)
-        memory_usage_.NoBarrier_Store(
-                reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
-#endif
-        return result;
-    }
-    return AllocateFallbackNVM(bytes);
-    */
-}
-
-inline char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
-    assert(bytes > 0);
-
-    SpinLock splock;
-    splock.lock();
-    
-    if(!allocation && !AllocateFallbackNVM(bytes)){
-        splock.unlock();
-        return NULL;
-    }
-    
-    const char* key_ptr = key.data();
-    unsigned int key_size = (unsigned int)key.size(); 
-    // std::cout<<"key: "<< key_ptr << std::endl;
-    // std::cout<<"key_size: "<< key_size << std::endl;
-    // std::cout<<"sub_mem_count: "<< sub_mem_count << std::endl;
-
-    unsigned int random_sub_mem_index = Time33Hash(key_ptr, key_size, sub_mem_count);  // randomly summon a index of sub-MemTable by hash algorithm
-
-    // std::cout<<"random_sub_mem_index: "<< random_sub_mem_index << std::endl;
-
-    if(bytes > sub_mem_alloc_bytes_remaining[random_sub_mem_index])
-        if(sub_mem_alloc_ptr_[random_sub_mem_index]) {
-            if(swap_sub_mem(random_sub_mem_index) == -1){
-                splock.unlock();
-                return NULL;
-            }
-        }
-        else {
-            if(alloc_sub_mem(random_sub_mem_index) == -1){
-                splock.unlock();
-                return NULL;
-            }
-        }
-    char* result = sub_mem_alloc_ptr_[random_sub_mem_index];
-    sub_mem_alloc_ptr_[random_sub_mem_index] += bytes;
-    sub_mem_alloc_bytes_remaining[random_sub_mem_index] -= bytes;
-#if defined(ENABLE_RECOVERY)
-    memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
-#endif
-    splock.unlock();
-    return result;
-}
 
 }  // namespace leveldb
 

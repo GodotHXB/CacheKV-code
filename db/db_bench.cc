@@ -800,6 +800,7 @@ private:
                 snprintf(key, sizeof(key), "%016d", k);
                 //_SIMULATE_FAILUREfprintf(stdout, "%s\n", key);
                 batch.Put(key, gen.Generate(value_size_));
+                // std::cout<<"in db_bench  Put  key:"<<key<<", value:"<<gen.Generate(value_size_).ToString()<<std::endl;
                 bytes += value_size_ + strlen(key);
                 thread->stats.FinishedSingleOp();
             }
@@ -875,9 +876,8 @@ private:
             k = thread->rand.Next() % FLAGS_num;
 #endif
             snprintf(key, sizeof(key), "%016d", k);
-            std::cout<<"key:"<<key<<std::endl;
             if (db_->Get(options, key, &value).ok()) {
-                std::cout<<"in db_bench  get  key:"<<key<<", value:"<<value<<std::endl;
+                // std::cout<<"in db_bench  get  key:"<<key<<", value:"<<value<<std::endl;
                 bytes += strlen(key) + value.size();
                 //printf("Finished reading %d\n", i);
                 found++;

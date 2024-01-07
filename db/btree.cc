@@ -15,6 +15,8 @@
 #include "db/btree.h"
 #include "db/btree_iterator.h"
 #include "db/parameters.h"
+#include "util/coding.h"
+#include "btree.h"
 
 namespace leveldb{
     
@@ -499,9 +501,9 @@ namespace leveldb{
 
         // set to NULL
         if (IS_FORWARD(hdr.switch_counter))
-        hdr.switch_counter += 2;
+            hdr.switch_counter += 2;
         else
-        ++hdr.switch_counter;
+            ++hdr.switch_counter;
         records[m].ptr = NULL;
         clflush((char *)&records[m], sizeof(Entry));
 
@@ -514,11 +516,11 @@ namespace leveldb{
 
         // insert the key
         if (key < split_key) {
-        insert_key(key, right, &num_entries);
-        ret = this;
+            insert_key(key, right, &num_entries);
+            ret = this;
         } else {
-        sibling->insert_key(key, right, &sibling_cnt);
-        ret = sibling;
+            sibling->insert_key(key, right, &sibling_cnt);
+            ret = sibling;
         }
 
         // Set a new root or insert the split key to the parent
@@ -832,7 +834,19 @@ namespace leveldb{
         }
     }
 
+    // insert the key in the leaf node (using char* as param)
+    void Btree::Insert(char *key, char *right) { // need to be string
+        Page *p = (Page *)root;
+        entry_key_t key_int64 = int64_atoi(key, strlen(key));
 
+        while (p->hdr.leftmost_ptr != NULL) {
+            p = (Page *)p->linear_search(key_int64);
+        }
+
+        if (!p->store(this, NULL, key_int64, right, true, true)) { // store
+            Btree::Insert(key_int64, right);
+        }
+    }
 
 
     // store the key into the node at the given level

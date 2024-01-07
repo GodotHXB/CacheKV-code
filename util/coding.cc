@@ -179,6 +179,13 @@ const char* GetLengthPrefixedSlice(const char* p, const char* limit,
   return p + len;
 }
 
+Slice GetLengthPrefixedSlice(const char* data) {
+    uint32_t len;
+    const char* p = data;
+    p = GetVarint32Ptr(p, p + 5, &len);  // +5: we assume "p" is not corrupted
+    return Slice(p, len);
+}
+
 bool GetLengthPrefixedSlice(Slice* input, Slice* result) {
   uint32_t len;
   if (GetVarint32(input, &len) &&

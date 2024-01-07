@@ -17,16 +17,10 @@
 #include <gnuwrapper.h>
 #include <string>
 #include <unordered_set>
+#include <iostream>
 
 
 namespace leveldb {
-
-static Slice GetLengthPrefixedSlice(const char* data) {
-    uint32_t len;
-    const char* p = data;
-    p = GetVarint32Ptr(p, p + 5, &len);  // +5: we assume "p" is not corrupted
-    return Slice(p, len);
-}
 
 void MemTable::AddPredictIndex
                 (std::unordered_set<std::string> *set,
@@ -67,9 +61,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp)
   sub_imm_skiplist(comparator_, &arena_) {
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_);
     // Skiplist -> B+-Tree
-    for (int i = 0; i < arena_.sub_mem_count; i++) {
-        sub_mem_btree.push_back(new Btree());
-    }
+    // for (int i = 0; i < arena_.sub_mem_count; i++) {
+    //     sub_mem_btree.push_back(new Btree());
+    // }
+    table_btree_ = new Btree();
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
     isQueBusy.store(0);
@@ -91,9 +86,10 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
     arena_.nvmarena_ = arena.nvmarena_;
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_, recovery);
     // Skiplist -> B+-Tree
-    for (int i = 0; i < arena_.sub_mem_count; i++) {
-        sub_mem_btree.push_back(new Btree());
-    }
+    // for (int i = 0; i < arena_.sub_mem_count; i++) {
+    //     sub_mem_btree.push_back(new Btree());
+    // }
+    table_btree_ = new Btree();
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
     isQueBusy.store(0);
@@ -241,6 +237,7 @@ retry:
     ArenaNVM *nvm_arena = (ArenaNVM *)&arena_;
     if(arena_.nvmarena_) {
         buf = nvm_arena->AllocateByKey(encoded_len, key);
+        // std::cout<<"buf: "<<(void *)buf<<std::endl;
         // buf = nvm_arena->Allocate(encoded_len);
     }else {
         buf = arena_.Allocate(encoded_len);
@@ -352,63 +349,54 @@ retry:
 //     return false;
 // }
 
-// B+-Tree version
-// 搜索每个子B树不成功
+
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
 
-    Slice memkey = key.user_key();
-    int64_t key_data_int64 = atoi(memkey);
-    // BtreeIterator iter_btree(sub_mem_btree);
-    // iter_btree.Seek(key_data_int64);
-
-    for(int i=0; i<arena_.sub_mem_count; i++){
-        if(!arena_.sub_mem_bset[i].load() || !arena_.sub_immem_bset[i].load()){
-            continue;
+    Slice userkey = key.user_key();
+    // std::cout<<"in MemTable::Get user key: "<<userkey.data()<<" size: "<<userkey.size()<<std::endl;
+    int64_t key_data_int64 = int64_atoi(userkey);
+    BtreeIterator iter_btree(table_btree_);
+    iter_btree.Seek(key_data_int64);
+    if (iter_btree.Valid()) {
+        // entry format is:
+        //    klength  varint32
+        //    userkey  char[klength]
+        //    tag      uint64
+        //    vlength  varint32
+        //    value    char[vlength]
+        // Check that it belongs to same user key.  We do not check the
+        // sequence number since the Seek() call above should have skipped
+        // all entries with overly large sequence numbers.
+#if defined(USE_OFFSETS)
+        Slice internalkey = key.internal_key();
+        ParsedInternalKey* parsed_key = new ParsedInternalKey();
+        ParseInternalKey(internalkey, parsed_key);
+        // std::cout<<"type: "<<parsed_key->type<<std::endl;
+        char *v = (char *)iter_btree.value();
+#else
+        const char* entry = iter.key();
+#endif
+        // if (comparator_.comparator.user_comparator()->Compare(
+        //         Slice(key_ptr, key_length - 8),
+        //         key.user_key()) == 0) {
+            // Correct user key
+            // const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
+        const uint64_t tag = parsed_key->type;
+        switch (static_cast<ValueType>(tag & 0xff)) {
+        case kTypeValue: {
+            // Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+            value->assign(v);
+            return true;
         }
-        BtreeIterator iter_btree(sub_mem_btree[i]);
-        iter_btree.Seek(key_data_int64);
-        if(iter_btree.Valid()){
-            std::cout<<"in MemTable::Get  key: "<<iter_btree.key()<<", value:"<<(char *)iter_btree.value()<<std::endl;
-            if(iter_btree.key() != key_data_int64){
-                std::cout<<"Key Not Found"<<std::endl;
-                continue;
-            }
-            else break;
-        }  
-    } // seek key-value pair in sub-memtables
-
-    // if(iter_btree.Valid()){
-    //     std::cout<<"in MemTable::Get  key: "<<iter_btree.key()<<", value:"<<(char *)iter_btree.value()<<std::endl;
-    //     // iter_btree.GetCurPage()->print();
-    // }
-
-//     if (iter_btree.Valid()) {
-// #if defined(USE_OFFSETS)
-//         const char* entry = reinterpret_cast<const char *>((intptr_t)iter.key_offset());
-// #else
-//         const char* entry = iter.key();
-// #endif
-//         uint32_t key_length;
-//         const char* key_ptr = GetVarint32Ptr(entry, entry+5, &key_length);
-//         if (comparator_.comparator.user_comparator()->Compare(
-//                 Slice(key_ptr, key_length - 8),
-//                 key.user_key()) == 0) {
-//             // Correct user key
-//             const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-//             switch (static_cast<ValueType>(tag & 0xff)) {
-//             case kTypeValue: {
-//                 Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
-//                 value->assign(v.data(), v.size());
-//                 return true;
-//             }
-//             case kTypeDeletion:
-//                 *s = Status::NotFound(Slice());
-//                 return true;
-//             }
-//         }
-//     }
+        case kTypeDeletion:
+            *s = Status::NotFound(Slice());
+            return true;
+        }
+        // }
+    }
     return false;
 }
+
 
 bool MemTable::Get_submem(const LookupKey& key, std::string* value, Status* s){
     Slice memkey = key.memtable_key();

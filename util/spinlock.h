@@ -14,19 +14,24 @@ namespace leveldb {
 
 class SCOPED_LOCKABLE SpinLock {
 private:
-    std::atomic<bool> flag = ATOMIC_VAR_INIT(false);
+    std::atomic<bool>flag;
 public:
-    SpinLock() = default;
+    SpinLock() : flag(false){};
     SpinLock(const SpinLock&) = delete;
     SpinLock& operator=(const SpinLock) = delete;
     void lock(){   //acquire spin lock
         bool expected = false;
-        while(!flag.compare_exchange_strong(expected, true));
-        expected = false;    
-    }   
+        while(!flag.compare_exchange_weak(expected, true)){
+            expected = false;    
+        }   
+    }
     void unlock(){   //release spin lock
+        // std::cout<<"lock released"<<std::endl;
         flag.store(false);
-    }   
+    }
+    void getLockStatus(){
+        std::cout<<"lock status: "<<flag.load()<<std::endl;
+    }
 };
 
 }  // namespace leveldb

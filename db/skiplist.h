@@ -245,7 +245,6 @@ SkipList<Key,Comparator>::NewNode(const Key& key, int height, bool head_alloc) {
         else {
             char *key_offset = reinterpret_cast<char *>((intptr_t)key) - (char*)nvm_arena->map_start_;
             int sub_mem_index = (int)key_offset / SUB_MEM_SIZE;
-            // std::cout<<"sub_mem_index: "<<sub_mem_index<<std::endl;
             mem = nvm_arena->AllocateAligned_submemIndex(  
                     sizeof(Node) + sizeof(port::AtomicPointer) * (height - 1), sub_mem_index);
         }

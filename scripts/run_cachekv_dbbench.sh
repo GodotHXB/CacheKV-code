@@ -3,7 +3,7 @@
 
 NUMTHREAD=1
 BENCHMARKS="fillrandom,readrandom"
-NUMKEYS="1000000"
+NUMKEYS="10000000"
 #NoveLSM specific parameters
 #NoveLSM uses memtable levels, always set to num_levels 2
 #write_buffer_size DRAM memtable size in MBs

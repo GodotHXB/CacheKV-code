@@ -10,6 +10,7 @@
 #ifndef STORAGE_LEVELDB_UTIL_CODING_H_
 #define STORAGE_LEVELDB_UTIL_CODING_H_
 
+#include <iostream>
 #include <stdint.h>
 #include <string.h>
 #include <string>
@@ -30,6 +31,7 @@ extern void PutLengthPrefixedSlice(std::string* dst, const Slice& value);
 extern bool GetVarint32(Slice* input, uint32_t* value);
 extern bool GetVarint64(Slice* input, uint64_t* value);
 extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
+extern Slice GetLengthPrefixedSlice(const char* data);
 
 // Pointer-based variants of GetVarint...  These either store a value
 // in *v and return a pointer just past the parsed value, or return
@@ -99,16 +101,34 @@ inline const char* GetVarint32Ptr(const char* p,
   return GetVarint32PtrFallback(p, limit, value);
 }
 
-inline uint64_t atoi(const char* str, size_t size) {
-  uint64_t val = 0;
+inline int64_t int64_atoi(const char* str, size_t size) {
+  int64_t val = 0;
   while(size-- > 0 && *str && *str >= '0' && *str <= '9') {
     val = val*10 + (*str++ - '0');
   }
   return val;
 }
 
-inline uint64_t atoi(Slice slice) {
-  return atoi(slice.data(), slice.size());
+inline int64_t int64_atoi_get(const char* str, size_t size) {
+  int64_t val = 0;
+  std::cout<<*str<<std::endl;
+  while(size-- > 0 && *str && *str >= '0' && *str <= '9') {
+    val = val*10 + (*str++ - '0');
+    // std::cout<<"current val: "<<val<<std::endl;
+  }
+  return val;
+}
+
+inline int64_t int64_atoi(Slice slice) {
+  return int64_atoi(slice.data(), slice.size());
+}
+
+inline int64_t int64_atoi_get(Slice slice) {
+  return int64_atoi_get(slice.data(), slice.size());
+}
+
+inline void int64ToChar(char dst[], int64_t num) {
+  for(int i = 0; i < 8; i++) dst[i] = num >> (8-1-i)*8;
 }
 
 }  // namespace leveldb

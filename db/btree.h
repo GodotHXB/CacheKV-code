@@ -163,6 +163,7 @@ namespace leveldb{
     Btree();
     void setNewRoot(char *);
     void Insert(entry_key_t, char *);
+    void Insert(char *, char *);
     void btree_insert_internal(char *, entry_key_t, char *, uint32_t);
     void btree_delete(entry_key_t);
     void btree_delete_internal(entry_key_t, char *, uint32_t, entry_key_t *,

@@ -161,6 +161,8 @@ public:
     size_t subImm_partition;
     size_t subImm_thread;
 
+    double total_run_time;
+
 private:
     friend class DB;
     struct CompactionState;

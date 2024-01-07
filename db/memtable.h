@@ -137,10 +137,10 @@ public:
     std::deque<MemTable*> subImmQue;
 	std::atomic_bool isQueBusy;
 	
-	Table table_; // global skip list
+	Table table_;
 
 	// SkipList -> B+-Tree
-	Btree table_btree_; // global btree
+	Btree* table_btree_; // global btree
 
 private:
 	~MemTable();  // Private since only Unref() should be used to delete it
