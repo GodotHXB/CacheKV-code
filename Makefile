@@ -62,8 +62,8 @@ BENCHMARKS = \
 	doc/bench/db_bench_sqlite3 \
 	doc/bench/db_bench_tree_db
 
-CFLAGS += -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
-CXXFLAGS += -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT)
+CFLAGS += -g -I. -I./include $(PLATFORM_CCFLAGS) $(OPT)
+CXXFLAGS += -g -I. -I./include $(PLATFORM_CXXFLAGS) $(OPT)
 
 LDFLAGS += $(PLATFORM_LDFLAGS)
 LIBS += $(PLATFORM_LIBS) #-lhoard -lnuma

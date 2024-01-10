@@ -1626,7 +1626,7 @@ Status DBImpl::Get(const ReadOptions& options,
     snapshot = versions_->LastSequence();
   }
 
-  MemTable* mem = mem_;  // mem_: global skiplist
+  MemTable* mem = mem_;  // mem_: global memtable
   mem->Ref();
 
   Version::GetStats stats;
@@ -1634,9 +1634,12 @@ Status DBImpl::Get(const ReadOptions& options,
   {
     mutex_.Unlock();
     LookupKey lkey(key, snapshot);
-    if(mem_->Get_submem(lkey, value, &s)) {}
+    if(mem_->Get_submem(lkey, value, &s)) {
+        // std::cout<<"get sub_mem value: "<<*value<<std::endl;
+    }
     else {
         mem_->Get(lkey, value, &s);
+        // std::cout<<"get value: "<<*value<<std::endl;
     }
 end:
     mutex_.Lock();
@@ -1860,8 +1863,9 @@ Status DBImpl::MakeRoomForWrite(bool force) {
             break;
         } else if(compactImm_threshold>0 && mem_->subImmQue.size()>compactImm_threshold && !inCompactImm.load()) {
                 env_->Schedule(&DBImpl::compactImm, (void*)this);
-        } else if (tmp_mem_count < mem_->arena_.sub_mem_count)
+        } else if (tmp_mem_count < mem_->arena_.sub_mem_count){
                 break;
+        }         
     }
 
     if(skiplistSync_threshold>0 && mem_->GetNumKeys()>1 && (mem_->GetNumKeys() % skiplistSync_threshold >= 2) 

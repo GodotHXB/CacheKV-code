@@ -230,9 +230,6 @@ void MemTable::Add(SequenceNumber s, ValueType type,
     char* buf = NULL;
 
     const char* key_data = key.data();
-    // printf("%s %d\n", key_data, key_size);
-    // std::cout<<key_data<<std::endl;
-    
 retry:
     ArenaNVM *nvm_arena = (ArenaNVM *)&arena_;
     if(arena_.nvmarena_) {
@@ -243,13 +240,14 @@ retry:
         buf = arena_.Allocate(encoded_len);
     }
     if(!buf){
-        //usleep(70000); 
+        // usleep(70000); 
         //nvm_arena->reclaim_sub_mem(-1);
         goto retry;
         perror("Memory allocation failed");
         exit(-1);
     }
 
+    // std::cout<<"buf: "<<buf<<std::endl;
     // std::cout<<"internal_key_size:"<<internal_key_size<<std::endl;
     char* p = EncodeVarint32(buf, internal_key_size); // internal_key_size转为varint -> buf
 
@@ -259,7 +257,6 @@ retry:
     //to NUMA nodes. Simply adding the memory copy persist
     //Will be re-enabled in next version soon.
     if (this->isNVMMemtable == true) {
-        // std::cout<<"key_size:"<<key_size<<std::endl;
         memcpy(p, key.data(), key_size);
     }else{
         memcpy(p, key.data(), key_size);

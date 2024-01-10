@@ -246,6 +246,7 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
     //     cores = online_core;
     // std::cout<<"online core: "<<online_core<<std::endl;
 
+    splocks = new SpinLock[sub_mem_count];
     sub_mem_alloc_ptr_ = (char**)malloc(sizeof(char*) * sub_mem_count);
     sub_mem_alloc_bytes_remaining = (size_t*)malloc(sizeof(size_t) * sub_mem_count);
 
@@ -253,8 +254,8 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
         sub_mem_alloc_ptr_[i] = NULL;
         sub_mem_alloc_bytes_remaining[i] = 0;
     }
-    sub_mem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
 
+    sub_mem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
     sub_immem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
     sub_immem_count = 0;
     in_trans_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
@@ -263,20 +264,12 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
     skiplist_alloc_ptr_ = (char**)malloc(sizeof(char*) * size / SUB_MEM_SIZE);
     skiplist_alloc_bytes_remaining_ = (size_t*)malloc(sizeof(size_t) * size / SUB_MEM_SIZE);
 
-    // Skiplist -> B+-Tree
-    btree_blocks = new std::vector<char*>[size / SUB_MEM_SIZE];
-    btree_alloc_ptr_ = (char**)malloc(sizeof(char*) * size / SUB_MEM_SIZE);
-    btree_alloc_bytes_remaining_ = (size_t*)malloc(sizeof(size_t) * size / SUB_MEM_SIZE);
-
-
     for(int i=0; i<sub_mem_count; i++) {
         sub_mem_bset[i] = 0;
         sub_immem_bset[i] = 0;
         in_trans_bset[i] = 0;
         skiplist_alloc_ptr_[i] = NULL;
         skiplist_alloc_bytes_remaining_[i] = 0;
-        btree_alloc_ptr_[i] = NULL;
-        btree_alloc_bytes_remaining_[i] = 0;
     }
 }
 #else
@@ -310,39 +303,38 @@ int ArenaNVM::alloc_sub_mem(int sub_mem_index) {
     if(i == sub_mem_count){
         return -1;
     }
-    sub_mem_alloc_ptr_[sub_mem_index] = (char*)map_start_ + i * SUB_MEM_SIZE;
+    sub_mem_alloc_ptr_[sub_mem_index] = (char*)map_start_ + sub_mem_index * SUB_MEM_SIZE;
     sub_mem_alloc_bytes_remaining[sub_mem_index] = SUB_MEM_SIZE;
-    return i;
+    return sub_mem_index;
 }
 
 
 int ArenaNVM::swap_sub_mem(int sub_mem_index) {
-    int sub_mem = (sub_mem_alloc_ptr_[sub_mem_index] - (char*)map_start_) / SUB_MEM_SIZE;
-    sub_immem_bset[sub_mem].store(1);
+    // int sub_mem = (sub_mem_alloc_ptr_[sub_mem_index] - (char*)map_start_) / SUB_MEM_SIZE;
+    sub_immem_bset[sub_mem_index].store(1);
     sub_immem_count++;
     sub_mem_alloc_ptr_[sub_mem_index] = NULL;
     sub_mem_alloc_bytes_remaining[sub_mem_index] = 0;
     return alloc_sub_mem(sub_mem_index);
 }
 
+// reset the memory allocation of the sub-memtables
 void ArenaNVM::reclaim_sub_mem(int sub_mem_index){
     if(sub_mem_index!=-1 && !sub_mem_alloc_ptr_[sub_mem_index])
         return;
 
     if(sub_mem_index == -1){
-        for(int i=0; i<cores; i++) {
-            sub_mem_alloc_ptr_[i] = NULL;
-            sub_mem_alloc_bytes_remaining[i] = 0;
-        }
         for(int i=0; i<sub_mem_count; i++) {
+            sub_mem_alloc_ptr_[i] = (char *)map_start_ + i * SUB_MEM_SIZE;
+            sub_mem_alloc_bytes_remaining[i] = SUB_MEM_SIZE;
             sub_mem_bset[i].store(0);
         }
     }
     else{
-        int sub_mem = (sub_mem_alloc_ptr_[sub_mem_index] - (char*)map_start_) / SUB_MEM_SIZE;
+        // int sub_mem = (sub_mem_alloc_ptr_[sub_mem_index] - (char*)map_start_) / SUB_MEM_SIZE;
         sub_mem_alloc_ptr_[sub_mem_index] = NULL;
         sub_mem_alloc_bytes_remaining[sub_mem_index] = 0;
-        sub_mem_bset[sub_mem].store(0);
+        sub_mem_bset[sub_mem_index].store(0);
     }
 }
 
@@ -352,8 +344,6 @@ void ArenaNVM::setSubMemToImm(){
     for(int i=0; i<sub_mem_count; i++) {
         sub_mem_alloc_ptr_[i] = NULL;
         sub_mem_alloc_bytes_remaining[i] = 0;
-    }
-    for(int i=0; i<sub_mem_count; i++) {
         sub_immem_bset[i].store(1);
         sub_immem_count++;
     }
@@ -375,28 +365,28 @@ void ArenaNVM::setSubMemToImm(){
 //         return 1;
 // }
 
-static void mem_flush(const void *p, const size_t s);
-int ArenaNVM::dlock_exit(void)
-{
-    int ret = 0;
-    unsigned i;
+// static void mem_flush(const void *p, const size_t s);
+// int ArenaNVM::dlock_exit(void)
+// {
+//     int ret = 0;
+//     unsigned i;
 
-    for (i = 0; i < DIM(m_l3cat_cos); i++) {
-        if (m_l3cat_cos[i].cos_tab != NULL) {
-            int res = pqos_l3ca_set(m_l3cat_cos[i].id, m_num_clos, m_l3cat_cos[i].cos_tab);
-            if (res != PQOS_RETVAL_OK)
-                ret = -2;
-        }
-        free(m_l3cat_cos[i].cos_tab);
-        m_l3cat_cos[i].cos_tab = NULL;
-        m_l3cat_cos[i].id = 0;
-    }
-    for (size_t i = 0; i < blocks_.size(); i++) {
-        mem_flush(blocks_[i], kSize);
-    }
+//     for (i = 0; i < DIM(m_l3cat_cos); i++) {
+//         if (m_l3cat_cos[i].cos_tab != NULL) {
+//             int res = pqos_l3ca_set(m_l3cat_cos[i].id, m_num_clos, m_l3cat_cos[i].cos_tab);
+//             if (res != PQOS_RETVAL_OK)
+//                 ret = -2;
+//         }
+//         free(m_l3cat_cos[i].cos_tab);
+//         m_l3cat_cos[i].cos_tab = NULL;
+//         m_l3cat_cos[i].id = 0;
+//     }
+//     for (size_t i = 0; i < blocks_.size(); i++) {
+//         mem_flush(blocks_[i], kSize);
+//     }
 
-    return ret;
-}
+//     return ret;
+// }
 
 void* ArenaNVM:: operator new(size_t size)
 {
@@ -427,8 +417,8 @@ ArenaNVM::~ArenaNVM() {
         blocks_[i] = NULL;
     }
 #endif
-    if(isDataLock)
-        dlock_exit();
+    // if(isDataLock)
+    //     dlock_exit();
     free(sub_mem_alloc_ptr_);
     free(sub_mem_alloc_bytes_remaining);
     free(sub_mem_bset);
@@ -745,8 +735,7 @@ char* ArenaNVM::Allocate(size_t bytes) {
         return NULL;
     }
 
-
-    if(bytes > sub_mem_alloc_bytes_remaining[cpu])
+    if(bytes > sub_mem_alloc_bytes_remaining[cpu]){
         if(sub_mem_alloc_ptr_[cpu]) {
             if(swap_sub_mem(cpu) == -1)
             {
@@ -760,6 +749,11 @@ char* ArenaNVM::Allocate(size_t bytes) {
                 return NULL;
             }
         }
+        // for(int i=0;i<sub_mem_count;i++){
+        //     std::cout<<"sub_mem_alloc_bytes_remaining["<<i<<"] = "<<sub_mem_alloc_bytes_remaining[i]<<std::endl;
+        // }
+        // std::cout<<"---------"<<std::endl;
+    }
     char* result = sub_mem_alloc_ptr_[cpu];
     sub_mem_alloc_ptr_[cpu] += bytes;
     sub_mem_alloc_bytes_remaining[cpu] -= bytes;
@@ -768,29 +762,13 @@ char* ArenaNVM::Allocate(size_t bytes) {
 #endif
     splock.unlock();
     return result;
-
-
-    /*if (bytes <= alloc_bytes_remaining_) {
-        char* result = alloc_ptr_;
-        alloc_ptr_ += bytes;
-        alloc_bytes_remaining_ -= bytes;
-#if defined(ENABLE_RECOVERY)
-        memory_usage_.NoBarrier_Store(
-                reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
-#endif
-        return result;
-    }
-    return AllocateFallbackNVM(bytes);
-    */
 }
 
 char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
     assert(bytes > 0);
-    splock.lock();
 
     
     if(!allocation && !AllocateFallbackNVM(bytes)){
-        splock.unlock();
         return NULL;
     }
     
@@ -799,27 +777,37 @@ char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
 
     // randomly summon a index of sub-MemTable by hash algorithm
     unsigned int random_sub_mem_index = Time33Hash(key_ptr, key_size, sub_mem_count); 
+    splocks[random_sub_mem_index].lock();
 
-    if(bytes > sub_mem_alloc_bytes_remaining[random_sub_mem_index])
+    // no enough space for new kv-pair
+    if(bytes > sub_mem_alloc_bytes_remaining[random_sub_mem_index]){
+        // have allocated space for this sub-MemTable
         if(sub_mem_alloc_ptr_[random_sub_mem_index]) {
             if(swap_sub_mem(random_sub_mem_index) == -1){
-                splock.unlock();
+                // std::cout<<"failed in swap"<<std::endl;
+                splocks[random_sub_mem_index].unlock();
                 return NULL;
             }
         }
         else {
             if(alloc_sub_mem(random_sub_mem_index) == -1){
-                splock.unlock();
+                // std::cout<<"failed in alloc"<<std::endl;
+                splocks[random_sub_mem_index].unlock();
                 return NULL;
             }
         }
+    }
+    // for(int i=0;i<sub_mem_count;i++){
+    //     std::cout<<"sub_mem_alloc_bytes_remaining["<<i<<"] = "<<sub_mem_alloc_bytes_remaining[i]<<std::endl;
+    // }
+    // std::cout<<"---------"<<std::endl;
     char* result = sub_mem_alloc_ptr_[random_sub_mem_index];
     sub_mem_alloc_ptr_[random_sub_mem_index] += bytes;
     sub_mem_alloc_bytes_remaining[random_sub_mem_index] -= bytes;
 #if defined(ENABLE_RECOVERY)
     memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
 #endif
-    splock.unlock();
+    splocks[random_sub_mem_index].unlock();
     return result;
 }
 

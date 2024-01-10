@@ -96,13 +96,10 @@ public:
     char** skiplist_alloc_ptr_;
     size_t *skiplist_alloc_bytes_remaining_;
 
-    // SkipList -> B+-Tree
-    std::vector<char*> *btree_blocks;
-    char** btree_alloc_ptr_;
-    size_t *btree_alloc_bytes_remaining_;
-
     size_t dlock_way;
     size_t dlock_size;
+
+    SpinLock *splocks;
 
     // Array of new[] allocated memory blocks
     std::vector<char*> blocks_;
@@ -156,7 +153,7 @@ public:
     void reclaim_sub_mem(int sub_mem_index);
     void setSubMemToImm();
     int init_memory(char* mmap_ptr, size_t sz);
-    int dlock_exit(void);
+    // int dlock_exit(void);
 
     // Returns an estimate of the total memory usage of data allocated
     // by the arena.
