@@ -9,7 +9,7 @@ NUMKEYS="10000000"
 #write_buffer_size DRAM memtable size in MBs
 #write_buffer_size_2 specifies NVM memtable size; set it in few GBs for perfomance;
 OTHERPARAMS="--num_levels=2 --write_buffer_size=$DRAMBUFFSZ --nvm_buffer_size=$NVMBUFFSZ"
-CACHEKVPARAMS="--dlock_way=4 --dlock_size=12582912 --skiplistSync_threshold=65536 --compactImm_threshold=10 --subImm_partition=0 --subImm_thread=1"
+CACHEKVPARAMS="--dlock_way=4 --dlock_size=12582912 --skiplistSync_threshold=65536 --compactImm_threshold=16 --subImm_partition=0 --subImm_thread=1"
 NUMREADTHREADS="5"
 VALUSESZ=64
 

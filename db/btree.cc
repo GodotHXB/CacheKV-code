@@ -951,11 +951,6 @@ namespace leveldb{
         }
     }
 
-    Btree* Btree::merge_two_btree(Btree* bt1, Btree* bt2){
-        
-    }
-
-
     void Btree::printAll() {
         pthread_mutex_lock(&print_mtx);
         int total_keys = 0;

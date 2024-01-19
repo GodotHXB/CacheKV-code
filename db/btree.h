@@ -171,7 +171,6 @@ namespace leveldb{
     char *btree_search(entry_key_t);
     void btree_search_range(entry_key_t, entry_key_t, unsigned long *);
     void printAll();
-    Btree* merge_two_btree(Btree*, Btree*);
 
     BtreeIterator* getIterator();
 

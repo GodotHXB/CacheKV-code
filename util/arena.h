@@ -145,7 +145,7 @@ public:
     char* AllocateAligned(size_t bytes);
     char* AllocateAlignedNVM(size_t bytes);
     char* Allocate(size_t bytes);
-    char* AllocateByKey(size_t bytes, Slice const& key);
+    char* AllocateByKey(size_t bytes, Slice const& key, int* sub_mem_index);
     void* CalculateOffset(void* ptr);
     void* getMapStart();
     int alloc_sub_mem(int sub_mem_index);

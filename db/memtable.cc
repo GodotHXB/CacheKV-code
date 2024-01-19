@@ -22,6 +22,9 @@
 
 namespace leveldb {
 
+pthread_mutex_t mutex_alloc;
+
+
 void MemTable::AddPredictIndex
                 (std::unordered_set<std::string> *set,
                         const uint8_t* data) {
@@ -96,6 +99,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
 
     for(int i=0; i<arena_.sub_mem_count; i++) {
         sub_mem_pending_node_index[i] = 0;
+        // sub_mem_pending_node[i]->push_back(_); 
     }
 }
 
@@ -232,9 +236,9 @@ void MemTable::Add(SequenceNumber s, ValueType type,
     const char* key_data = key.data();
 retry:
     ArenaNVM *nvm_arena = (ArenaNVM *)&arena_;
+    int sub_mem_index_inAlloc;
     if(arena_.nvmarena_) {
-        buf = nvm_arena->AllocateByKey(encoded_len, key);
-        // std::cout<<"buf: "<<(void *)buf<<std::endl;
+        buf = nvm_arena->AllocateByKey(encoded_len, key, &sub_mem_index_inAlloc);
         // buf = nvm_arena->Allocate(encoded_len);
     }else {
         buf = arena_.Allocate(encoded_len);
@@ -247,8 +251,6 @@ retry:
         exit(-1);
     }
 
-    // std::cout<<"buf: "<<buf<<std::endl;
-    // std::cout<<"internal_key_size:"<<internal_key_size<<std::endl;
     char* p = EncodeVarint32(buf, internal_key_size); // internal_key_size转为varint -> buf
 
 
@@ -287,7 +289,10 @@ retry:
     }else {
         sub_mem_index = (buf - (char*)arena_.map_start_) / SUB_MEM_SIZE;
     }
+
+    pthread_mutex_lock(&mutex_alloc);
     sub_mem_pending_node[sub_mem_index].push_back(buf);
+    pthread_mutex_unlock(&mutex_alloc);
 /*
 #ifdef ENABLE_RECOVERY
     table_.Insert(buf, s);
@@ -368,7 +373,6 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
         Slice internalkey = key.internal_key();
         ParsedInternalKey* parsed_key = new ParsedInternalKey();
         ParseInternalKey(internalkey, parsed_key);
-        // std::cout<<"type: "<<parsed_key->type<<std::endl;
         char *v = (char *)iter_btree.value();
 #else
         const char* entry = iter.key();

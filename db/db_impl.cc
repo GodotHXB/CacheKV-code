@@ -1031,6 +1031,7 @@ void DBImpl::compactImm(void* db) {
     MemTable* tmp_mem = reinterpret_cast<DBImpl*>(db)->mem_;
     MemTable* sub_imm;
     std::deque<MemTable*> tmp_subImmQue;
+
 loop:
     if(!tmp_mem->isQueBusy.load() && !tmp_mem->isQueBusy.exchange(1)){
         std::swap(tmp_subImmQue, tmp_mem->subImmQue);
@@ -1057,8 +1058,6 @@ loop:
             char* val_ptr = new char[v.size()+1];
             memcpy(val_ptr, v.data(), v.size());
             val_ptr[v.size()] = '\0';   // add '\0' to the end of val_ptr
-            // std::cout<<"val_ptr: "<<(void *)val_ptr<<std::endl;
-            // std::cout<<"val_data: "<<v.size()<<std::endl;
             iter.Next();
             // tmp_mem->table_.InsertNode(p);  // sub skiplists -> global skiplist
             tmp_mem->table_btree_->Insert(key_ptr,val_ptr);  // sub skiplists -> global B+-Tree
@@ -1862,7 +1861,8 @@ Status DBImpl::MakeRoomForWrite(bool force) {
             }
             break;
         } else if(compactImm_threshold>0 && mem_->subImmQue.size()>compactImm_threshold && !inCompactImm.load()) {
-                env_->Schedule(&DBImpl::compactImm, (void*)this);
+                // env_->Schedule(&DBImpl::compactImm, (void*)this);
+                break;
         } else if (tmp_mem_count < mem_->arena_.sub_mem_count){
                 break;
         }         

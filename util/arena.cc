@@ -250,10 +250,19 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
     sub_mem_alloc_ptr_ = (char**)malloc(sizeof(char*) * sub_mem_count);
     sub_mem_alloc_bytes_remaining = (size_t*)malloc(sizeof(size_t) * sub_mem_count);
 
+
     for(int i=0; i<sub_mem_count; i++) {
         sub_mem_alloc_ptr_[i] = NULL;
         sub_mem_alloc_bytes_remaining[i] = 0;
     }
+
+    // for(int i=0;i<sub_mem_count;i++){
+    //     std::cout<<"sub_mem_alloc_ptr["<<i<<"] = "<<sub_mem_alloc_ptr_[i]<<std::endl;
+    // }
+    // for(int i=0;i<sub_mem_count;i++){
+    //     std::cout<<"sub_mem_alloc_bytes_remaining["<<i<<"] = "<<sub_mem_alloc_bytes_remaining[i]<<std::endl;
+    // }
+    // std::cout<<"---------"<<std::endl;
 
     sub_mem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
     sub_immem_bset = (std::atomic_bool*)malloc(sizeof(std::atomic_bool) * size / SUB_MEM_SIZE);
@@ -295,16 +304,21 @@ void* ArenaNVM::getMapStart() {
 }
 
 int ArenaNVM::alloc_sub_mem(int sub_mem_index) {
-    int i;
-    for(i=0; i<sub_mem_count; i++) {
-        if(!sub_mem_bset[i].load() && !sub_mem_bset[i].exchange(true))
-            break;
-    }
-    if(i == sub_mem_count){
+    // int i;
+    // for(i=0; i<sub_mem_count; i++) {
+    //     if(!sub_mem_bset[i].load() && !sub_mem_bset[i].exchange(true))
+    //         break;
+    // }
+    // if(i == sub_mem_count){
+    //     return -1;
+    // }
+
+    if(sub_mem_bset[sub_mem_index].load()){
         return -1;
     }
     sub_mem_alloc_ptr_[sub_mem_index] = (char*)map_start_ + sub_mem_index * SUB_MEM_SIZE;
     sub_mem_alloc_bytes_remaining[sub_mem_index] = SUB_MEM_SIZE;
+    sub_mem_bset[sub_mem_index].store(1);
     return sub_mem_index;
 }
 
@@ -338,6 +352,7 @@ void ArenaNVM::reclaim_sub_mem(int sub_mem_index){
     }
 }
 
+// call when DB is closed
 void ArenaNVM::setSubMemToImm(){
     // long online_core;
     // online_core = sysconf(_SC_NPROCESSORS_ONLN);
@@ -764,7 +779,7 @@ char* ArenaNVM::Allocate(size_t bytes) {
     return result;
 }
 
-char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
+char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key, int* sub_mem_index) {
     assert(bytes > 0);
 
     
@@ -784,19 +799,20 @@ char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
         // have allocated space for this sub-MemTable
         if(sub_mem_alloc_ptr_[random_sub_mem_index]) {
             if(swap_sub_mem(random_sub_mem_index) == -1){
-                // std::cout<<"failed in swap"<<std::endl;
                 splocks[random_sub_mem_index].unlock();
                 return NULL;
             }
         }
         else {
             if(alloc_sub_mem(random_sub_mem_index) == -1){
-                // std::cout<<"failed in alloc"<<std::endl;
                 splocks[random_sub_mem_index].unlock();
                 return NULL;
             }
         }
     }
+    // for(int i=0;i<sub_mem_count;i++){
+    //     std::cout<<"sub_mem_alloc_ptr["<<i<<"] = "<<sub_mem_alloc_ptr_[i]<<std::endl;
+    // }
     // for(int i=0;i<sub_mem_count;i++){
     //     std::cout<<"sub_mem_alloc_bytes_remaining["<<i<<"] = "<<sub_mem_alloc_bytes_remaining[i]<<std::endl;
     // }
@@ -804,6 +820,7 @@ char* ArenaNVM::AllocateByKey(size_t bytes, Slice const& key) {
     char* result = sub_mem_alloc_ptr_[random_sub_mem_index];
     sub_mem_alloc_ptr_[random_sub_mem_index] += bytes;
     sub_mem_alloc_bytes_remaining[random_sub_mem_index] -= bytes;
+    *sub_mem_index = random_sub_mem_index;
 #if defined(ENABLE_RECOVERY)
     memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
 #endif
