@@ -153,7 +153,7 @@ public:
     void reclaim_sub_mem(int sub_mem_index);
     void setSubMemToImm();
     int init_memory(char* mmap_ptr, size_t sz);
-    // int dlock_exit(void);
+    int dlock_exit(void);
 
     // Returns an estimate of the total memory usage of data allocated
     // by the arena.

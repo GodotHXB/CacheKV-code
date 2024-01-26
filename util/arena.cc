@@ -25,8 +25,8 @@ static struct {
         struct pqos_l3ca *cos_tab;
 } m_l3cat_cos[MAX_L3CAT_NUM];
 
-// struct pqos_cpuinfo *g_p_cpu = NULL;
-// struct pqos_cap *g_p_cap = NULL;
+struct pqos_cpuinfo *g_p_cpu = NULL;
+struct pqos_cap *g_p_cap = NULL;
 
 static unsigned m_num_clos = 0;
 
@@ -47,6 +47,7 @@ Arena::Arena()
     nvmarena_ = false;
     fd = -1;
     kSize = kBlockSize;
+    blocks_.reserve(10240);
 }
 
 
@@ -364,44 +365,44 @@ void ArenaNVM::setSubMemToImm(){
     }
 }
 
-// int ArenaNVM::init_memory(char* mmap_ptr, size_t sz)
-// {
-//         size_t i;
+int ArenaNVM::init_memory(char* mmap_ptr, size_t sz)
+{
+        size_t i;
 
-//         if (sz <= 0)
-//                 return -1;
+        if (sz <= 0)
+                return -1;
 
-//         if (mmap_ptr == NULL)
-//                 return -1;
+        if (mmap_ptr == NULL)
+                return -1;
 
-//         for (i = 0; i < sz; i += 32)
-//                 mmap_ptr[i] = (char)rand();
+        for (i = 0; i < sz; i += 32)
+                mmap_ptr[i] = (char)rand();
 
-//         return 1;
-// }
+        return 1;
+}
 
-// static void mem_flush(const void *p, const size_t s);
-// int ArenaNVM::dlock_exit(void)
-// {
-//     int ret = 0;
-//     unsigned i;
+static void mem_flush(const void *p, const size_t s);
+int ArenaNVM::dlock_exit(void)
+{
+    int ret = 0;
+    unsigned i;
 
-//     for (i = 0; i < DIM(m_l3cat_cos); i++) {
-//         if (m_l3cat_cos[i].cos_tab != NULL) {
-//             int res = pqos_l3ca_set(m_l3cat_cos[i].id, m_num_clos, m_l3cat_cos[i].cos_tab);
-//             if (res != PQOS_RETVAL_OK)
-//                 ret = -2;
-//         }
-//         free(m_l3cat_cos[i].cos_tab);
-//         m_l3cat_cos[i].cos_tab = NULL;
-//         m_l3cat_cos[i].id = 0;
-//     }
-//     for (size_t i = 0; i < blocks_.size(); i++) {
-//         mem_flush(blocks_[i], kSize);
-//     }
+    for (i = 0; i < DIM(m_l3cat_cos); i++) {
+        if (m_l3cat_cos[i].cos_tab != NULL) {
+            int res = pqos_l3ca_set(m_l3cat_cos[i].id, m_num_clos, m_l3cat_cos[i].cos_tab);
+            if (res != PQOS_RETVAL_OK)
+                ret = -2;
+        }
+        free(m_l3cat_cos[i].cos_tab);
+        m_l3cat_cos[i].cos_tab = NULL;
+        m_l3cat_cos[i].id = 0;
+    }
+    for (size_t i = 0; i < blocks_.size(); i++) {
+        mem_flush(blocks_[i], kSize);
+    }
 
-//     return ret;
-// }
+    return ret;
+}
 
 void* ArenaNVM:: operator new(size_t size)
 {
@@ -432,8 +433,8 @@ ArenaNVM::~ArenaNVM() {
         blocks_[i] = NULL;
     }
 #endif
-    // if(isDataLock)
-    //     dlock_exit();
+    if(isDataLock)
+        dlock_exit();
     free(sub_mem_alloc_ptr_);
     free(sub_mem_alloc_bytes_remaining);
     free(sub_mem_bset);
@@ -498,142 +499,142 @@ mem_read(const void *p, const size_t s)
     }
 }
 
-// int
-// dlock_init(void *ptr, const size_t way_count, const size_t dlock_size, const int clos, const int cpuid)
-// {
-// 	int ret = 0, res = 0, i = 0;
-// 	unsigned *l3cat_ids = NULL;
-// 	unsigned l3cat_id_count = 0;
-// 	const struct pqos_capability *p_l3ca_cap = NULL;
-//     unsigned clos_save = 0;
-// 	size_t num_cache_ways = way_count;//16MB
+int
+dlock_init(void *ptr, const size_t way_count, const size_t dlock_size, const int clos, const int cpuid)
+{
+	int ret = 0, res = 0, i = 0;
+	unsigned *l3cat_ids = NULL;
+	unsigned l3cat_id_count = 0;
+	const struct pqos_capability *p_l3ca_cap = NULL;
+    unsigned clos_save = 0;
+	size_t num_cache_ways = way_count;//16MB
 
-//     cpu_set_t cpuset_save, cpuset;
-//     res = sched_getaffinity(0, sizeof(cpuset_save), &cpuset_save);
-//     if (res != 0) {
-//         printf("cpu sched get err\n");
-//         ret = -4;
-//         return ret;
-//     }
+    cpu_set_t cpuset_save, cpuset;
+    res = sched_getaffinity(0, sizeof(cpuset_save), &cpuset_save);
+    if (res != 0) {
+        printf("cpu sched get err\n");
+        ret = -4;
+        return ret;
+    }
 
-//     CPU_ZERO(&cpuset);
-//     CPU_SET(cpuid, &cpuset);
-//     res = sched_setaffinity(0, sizeof(cpuset), &cpuset);
-//     if (res != 0) {
-//         printf("cpu sched set err\n");
-//         ret = -4;
-//         return ret;
-//     }
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpuid, &cpuset);
+    res = sched_setaffinity(0, sizeof(cpuset), &cpuset);
+    if (res != 0) {
+        printf("cpu sched set err\n");
+        ret = -4;
+        return ret;
+    }
 
-// 	for (i = 0; i < DIM(m_l3cat_cos); i++) {
-//     	m_l3cat_cos[i].id = 0;
-//         m_l3cat_cos[i].cos_tab = NULL;
-//     }
+	for (i = 0; i < DIM(m_l3cat_cos); i++) {
+    	m_l3cat_cos[i].id = 0;
+        m_l3cat_cos[i].cos_tab = NULL;
+    }
 	
-// 	res = pqos_cap_get(&g_p_cap, &g_p_cpu);
-// 	if(res != PQOS_RETVAL_OK) {
-//         printf("cap get err\n");
-// 		goto dlock_init_error1;
-// 	}
+	res = pqos_cap_get(&g_p_cap, &g_p_cpu);
+	if(res != PQOS_RETVAL_OK) {
+        printf("cap get err\n");
+		goto dlock_init_error1;
+	}
 
-// 	l3cat_ids = pqos_cpu_get_l3cat_ids(g_p_cpu, &l3cat_id_count);
-//     if (l3cat_ids == NULL) {
-//         ret = -6;
-//         printf("l3cat_ids get err\n");
-//     }
+	l3cat_ids = pqos_cpu_get_l3cat_ids(g_p_cpu, &l3cat_id_count);
+    if (l3cat_ids == NULL) {
+        ret = -6;
+        printf("l3cat_ids get err\n");
+    }
 	
-// 	res = pqos_cap_get_type(g_p_cap, PQOS_CAP_TYPE_L3CA, &p_l3ca_cap);
-// 	if (res != PQOS_RETVAL_OK) {
-//         printf("cap get type err res=%d\n", res);
-//         ret = -7;
-//     }
+	res = pqos_cap_get_type(g_p_cap, PQOS_CAP_TYPE_L3CA, &p_l3ca_cap);
+	if (res != PQOS_RETVAL_OK) {
+        printf("cap get type err res=%d\n", res);
+        ret = -7;
+    }
 
-// 	m_num_clos = p_l3ca_cap->u.l3ca->num_classes;
-// 	for (i = 0; i < l3cat_id_count; i++) {
-// 		const uint64_t dlock_mask = (1ULL << num_cache_ways) - 1ULL;
-// 		struct pqos_l3ca cos[m_num_clos];
-// 		unsigned num = 0, j;
-// 		res = pqos_l3ca_get(l3cat_ids[i], m_num_clos, &num, &cos[0]);
-// 		if (res != PQOS_RETVAL_OK) {
-//             printf("pqos_l3ca_get() error!\n");
-// 			ret = -9;
-// 			goto dlock_init_error2;
-// 		}
-// 		if (m_num_clos != num) {
-//             printf("CLOS number mismatch!\n");
-// 			ret = -9;
-// 			goto dlock_init_error2;
-// 		}
+	m_num_clos = p_l3ca_cap->u.l3ca->num_classes;
+	for (i = 0; i < l3cat_id_count; i++) {
+		const uint64_t dlock_mask = (1ULL << num_cache_ways) - 1ULL;
+		struct pqos_l3ca cos[m_num_clos];
+		unsigned num = 0, j;
+		res = pqos_l3ca_get(l3cat_ids[i], m_num_clos, &num, &cos[0]);
+		if (res != PQOS_RETVAL_OK) {
+            printf("pqos_l3ca_get() error!\n");
+			ret = -9;
+			goto dlock_init_error2;
+		}
+		if (m_num_clos != num) {
+            printf("CLOS number mismatch!\n");
+			ret = -9;
+			goto dlock_init_error2;
+		}
 
-// 		m_l3cat_cos[i].id = l3cat_ids[i];
-//         m_l3cat_cos[i].cos_tab = malloc(m_num_clos * sizeof(cos[0]));
-// 		if (m_l3cat_cos[i].cos_tab == NULL) {
-//             printf("malloc() error!\n");
-//             ret = -9;
-//             goto dlock_init_error2;
-//         }
-// 		memcpy(m_l3cat_cos[i].cos_tab, cos, m_num_clos * sizeof(cos[0]));
-// 		for (j = 0; j < m_num_clos; j++) {
-//             if (cos[j].cdp) {
-//                 if (cos[j].class_id == (unsigned)clos) {
-//                     cos[j].u.s.code_mask = dlock_mask;
-//                     cos[j].u.s.data_mask = dlock_mask;
-//                 } else {
-//                     cos[j].u.s.code_mask &= ~dlock_mask;
-//                     cos[j].u.s.data_mask &= ~dlock_mask;
-//                 }
-//             } else {
-//                 if (cos[j].class_id == (unsigned)clos)
-//                     cos[j].u.ways_mask = dlock_mask;
-//                 else
-//                     cos[j].u.ways_mask &= ~dlock_mask;
-//             }
-//         }
-// 		res = pqos_l3ca_set(l3cat_ids[i], m_num_clos, &cos[0]);
-//         if (res != PQOS_RETVAL_OK) {
-//             printf("pqos_l3ca_set() error!\n");
-//             ret = -10;
-//             goto dlock_init_error2;
-//         }
-// 	}
-// 	res = pqos_alloc_assoc_get(cpuid, &clos_save);
-//     if (res != PQOS_RETVAL_OK) {
-//         printf("pqos_alloc_assoc_get() error!\n");
-//         ret = -11;
-//         goto dlock_init_error2;
-//     }
-//     res = pqos_alloc_assoc_set(cpuid, clos);
-//     if (res != PQOS_RETVAL_OK) {
-//         printf("pqos_alloc_assoc_get() error!\n");
-//         ret = -12;
-//         goto dlock_init_error2;
-//     }
-// 	mem_flush(ptr, dlock_size);
-// 	for (i = 0; i < 10; i++)
-//         mem_read(ptr, dlock_size);
+		m_l3cat_cos[i].id = l3cat_ids[i];
+        m_l3cat_cos[i].cos_tab = malloc(m_num_clos * sizeof(cos[0]));
+		if (m_l3cat_cos[i].cos_tab == NULL) {
+            printf("malloc() error!\n");
+            ret = -9;
+            goto dlock_init_error2;
+        }
+		memcpy(m_l3cat_cos[i].cos_tab, cos, m_num_clos * sizeof(cos[0]));
+		for (j = 0; j < m_num_clos; j++) {
+            if (cos[j].cdp) {
+                if (cos[j].class_id == (unsigned)clos) {
+                    cos[j].u.s.code_mask = dlock_mask;
+                    cos[j].u.s.data_mask = dlock_mask;
+                } else {
+                    cos[j].u.s.code_mask &= ~dlock_mask;
+                    cos[j].u.s.data_mask &= ~dlock_mask;
+                }
+            } else {
+                if (cos[j].class_id == (unsigned)clos)
+                    cos[j].u.ways_mask = dlock_mask;
+                else
+                    cos[j].u.ways_mask &= ~dlock_mask;
+            }
+        }
+		res = pqos_l3ca_set(l3cat_ids[i], m_num_clos, &cos[0]);
+        if (res != PQOS_RETVAL_OK) {
+            printf("pqos_l3ca_set() error!\n");
+            ret = -10;
+            goto dlock_init_error2;
+        }
+	}
+	res = pqos_alloc_assoc_get(cpuid, &clos_save);
+    if (res != PQOS_RETVAL_OK) {
+        printf("pqos_alloc_assoc_get() error!\n");
+        ret = -11;
+        goto dlock_init_error2;
+    }
+    res = pqos_alloc_assoc_set(cpuid, clos);
+    if (res != PQOS_RETVAL_OK) {
+        printf("pqos_alloc_assoc_get() error!\n");
+        ret = -12;
+        goto dlock_init_error2;
+    }
+	mem_flush(ptr, dlock_size);
+	for (i = 0; i < 10; i++)
+        mem_read(ptr, dlock_size);
 
-// 	res = pqos_alloc_assoc_set(cpuid, clos_save);
-//     if (res != PQOS_RETVAL_OK) {
-//         printf("pqos_alloc_assoc_set() error (revert)!\n");
-//         ret = -13;
-//         goto dlock_init_error2;
-//     }
+	res = pqos_alloc_assoc_set(cpuid, clos_save);
+    if (res != PQOS_RETVAL_OK) {
+        printf("pqos_alloc_assoc_set() error (revert)!\n");
+        ret = -13;
+        goto dlock_init_error2;
+    }
 
-// dlock_init_error2:
-//     for (i = 0; (i < DIM(m_l3cat_cos)) && (ret != 0); i++)
-//         if (m_l3cat_cos[i].cos_tab != NULL)
-//             free(m_l3cat_cos[i].cos_tab);
+dlock_init_error2:
+    for (i = 0; (i < DIM(m_l3cat_cos)) && (ret != 0); i++)
+        if (m_l3cat_cos[i].cos_tab != NULL)
+            free(m_l3cat_cos[i].cos_tab);
 
-//     res = sched_setaffinity(0, sizeof(cpuset_save), &cpuset_save);
-//     if (res != 0) {
-//         printf("cpu sched restore err\n");
-//     }
+    res = sched_setaffinity(0, sizeof(cpuset_save), &cpuset_save);
+    if (res != 0) {
+        printf("cpu sched restore err\n");
+    }
 
-// dlock_init_error1:
-//     if (l3cat_ids != NULL)
-//         free(l3cat_ids);
-//     return ret;
-// }
+dlock_init_error1:
+    if (l3cat_ids != NULL)
+        free(l3cat_ids);
+    return ret;
+}
 
 char* ArenaNVM::AllocateNVMBlock(size_t block_bytes) {
     //NoveLSM
@@ -653,11 +654,11 @@ char* ArenaNVM::AllocateNVMBlock(size_t block_bytes) {
 
     char* result = (char *)mmap(NULL, block_bytes, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 
-    // if(isDataLock) {
-    //     init_memory(result, block_bytes);
-    //     if(dlock_init(result, dlock_way, dlock_size, 1, 0))
-    //         printf("dlock err\n");
-    // }
+    if(isDataLock) {
+        init_memory(result, block_bytes);
+        if(dlock_init(result, dlock_way, dlock_size, 1, 0))
+            printf("dlock err\n");
+    }
 
     allocation = true;
     blocks_.push_back(result);

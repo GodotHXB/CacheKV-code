@@ -1051,16 +1051,18 @@ loop:
         while(iter.Valid()){
             p = (void*)iter.node_;
             // key_offset type: char *
-            char* key_offset = const_cast<char *>(iter.key_offset());
+            const char* key_entry = reinterpret_cast<const char *>((intptr_t)iter.key_offset());
+            // char* key_offset = const_cast<char *>(iter.key_offset());
             uint32_t key_length;
-            char* key_ptr = const_cast<char*>(GetVarint32Ptr(key_offset, key_offset+5, &key_length));
-            Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
-            char* val_ptr = new char[v.size()+1];
-            memcpy(val_ptr, v.data(), v.size());
-            val_ptr[v.size()] = '\0';   // add '\0' to the end of val_ptr
+            const char* key_ptr = GetVarint32Ptr(key_entry, key_entry+5, &key_length);
+            const char* val_entry = key_ptr+key_length;
+            uint32_t value_length;
+            const char* val_ptr = GetVarint32Ptr(val_entry,val_entry+5,&value_length);
+            // memcpy(val_ptr, v.data(), v.size());
+            // val_ptr[v.size()] = '\0';   // add '\0' to the end of val_ptr
             iter.Next();
             // tmp_mem->table_.InsertNode(p);  // sub skiplists -> global skiplist
-            tmp_mem->table_btree_->Insert(key_ptr,val_ptr);  // sub skiplists -> global B+-Tree
+            tmp_mem->table_btree_->Insert(const_cast<char*>(key_ptr),const_cast<char*>(val_ptr));  // sub skiplists -> global B+-Tree
         }
         reinterpret_cast<DBImpl*>(db)->compactImmQue.push_back(sub_imm);
     }
@@ -1861,14 +1863,14 @@ Status DBImpl::MakeRoomForWrite(bool force) {
             }
             break;
         } else if(compactImm_threshold>0 && mem_->subImmQue.size()>compactImm_threshold && !inCompactImm.load()) {
-                // env_->Schedule(&DBImpl::compactImm, (void*)this);
+                env_->Schedule(&DBImpl::compactImm, (void*)this);
                 break;
-        } else if (tmp_mem_count < mem_->arena_.sub_mem_count){
+        } else if (tmp_mem_count <= mem_->arena_.sub_mem_count){
                 break;
         }         
     }
 
-    if(skiplistSync_threshold>0 && mem_->GetNumKeys()>1 && (mem_->GetNumKeys() % skiplistSync_threshold >= 2) 
+    if(skiplistSync_threshold>0 && mem_->GetNumKeys()>1 && (mem_->GetNumKeys() % skiplistSync_threshold == 1) 
     && !inSkiplistBgSync.load() && !inSkiplistBgSync.exchange(1)) {
         env_->Schedule(&DBImpl::skiplistBackgroundSync, (void*)this);
     }
@@ -1983,56 +1985,56 @@ Status DB::Delete(const WriteOptions& opt, const Slice& key) {
     return Write(opt, &batch);
 }
 
-// static int
-// init_pqos(void)
-// {
-//     const struct pqos_cpuinfo *p_cpu = NULL;
-//     const struct pqos_cap *p_cap = NULL;
-//     struct pqos_config cfg;
-//     int ret;
+static int
+init_pqos(void)
+{
+    const struct pqos_cpuinfo *p_cpu = NULL;
+    const struct pqos_cap *p_cap = NULL;
+    struct pqos_config cfg;
+    int ret;
 
-//     memset(&cfg, 0, sizeof(cfg));
-//     cfg.fd_log = STDOUT_FILENO;
-//     cfg.verbose = 0;
-//     ret = pqos_init(&cfg);
-//     if (ret != PQOS_RETVAL_OK) {
-//         printf("Error initializing PQoS library!\n");
-//         return -1;
-//     }
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.fd_log = STDOUT_FILENO;
+    cfg.verbose = 0;
+    ret = pqos_init(&cfg);
+    if (ret != PQOS_RETVAL_OK) {
+        printf("Error initializing PQoS library!\n");
+        return -1;
+    }
 
-//     ret = pqos_cap_get(&p_cap, &p_cpu);
-//     if (ret != PQOS_RETVAL_OK) {
-//         pqos_fini();
-//         printf("Error retrieving PQoS capabilities!\n");
-//         return -1;
-//     }
+    ret = pqos_cap_get(&p_cap, &p_cpu);
+    if (ret != PQOS_RETVAL_OK) {
+        pqos_fini();
+        printf("Error retrieving PQoS capabilities!\n");
+        return -1;
+    }
 
-//     ret = pqos_alloc_reset(PQOS_REQUIRE_CDP_ANY, PQOS_REQUIRE_CDP_ANY,
-//                             PQOS_MBA_ANY);
-//     if (ret != PQOS_RETVAL_OK) {
-//         pqos_fini();
-//         printf("Error resetting CAT!\n");
-//         return -1;
-//     }
+    ret = pqos_alloc_reset(PQOS_REQUIRE_CDP_ANY, PQOS_REQUIRE_CDP_ANY,
+                            PQOS_MBA_ANY);
+    if (ret != PQOS_RETVAL_OK) {
+        pqos_fini();
+        printf("Error resetting CAT!\n");
+        return -1;
+    }
 
-//     return 0;
-// }
+    return 0;
+}
 
-// static int
-// close_pqos(void)
-// {
-//     int ret_val = 0;
+static int
+close_pqos(void)
+{
+    int ret_val = 0;
 
-//     if (pqos_fini() != PQOS_RETVAL_OK) {
-//         printf("Error shutting down PQoS library!\n");
-//         ret_val = -1;
-//     }
+    if (pqos_fini() != PQOS_RETVAL_OK) {
+        printf("Error shutting down PQoS library!\n");
+        ret_val = -1;
+    }
 
-//     return ret_val;
-// }
+    return ret_val;
+}
 
 DB::~DB() {
-    // close_pqos();
+    close_pqos();
  }
 
 Status DB::Open(const Options& options, const std::string& dbname_disk,
@@ -2067,9 +2069,9 @@ Status DB::Open(const Options& options, const std::string& dbname_disk,
                 impl->logfile_ = lfile;
                 impl->log_ = new log::Writer(lfile);
                 if (impl->mem_ == NULL) {
-                    // if (init_pqos() != 0) {
-                    //     (void)close_pqos();
-                    // }
+                    if (init_pqos() != 0) {
+                        (void)close_pqos();
+                    }
 #if defined(ENABLE_RECOVERY)
                     uint64_t new_map_number = impl->versions_->NewFileNumber();
                     size_t size = 0;

@@ -63,10 +63,6 @@ MemTable::MemTable(const InternalKeyComparator& cmp)
   table_(comparator_, &arena_),
   sub_imm_skiplist(comparator_, &arena_) {
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_);
-    // Skiplist -> B+-Tree
-    // for (int i = 0; i < arena_.sub_mem_count; i++) {
-    //     sub_mem_btree.push_back(new Btree());
-    // }
     table_btree_ = new Btree();
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
@@ -74,6 +70,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp)
 
     for(int i=0; i<arena_.sub_mem_count; i++) {
         sub_mem_pending_node_index[i] = 0;
+        sub_mem_pending_node[i].reserve(65536);
     }
 }
 
@@ -88,10 +85,6 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
   sub_imm_skiplist(comparator_, &arena_, recovery) {
     arena_.nvmarena_ = arena.nvmarena_;
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_, recovery);
-    // Skiplist -> B+-Tree
-    // for (int i = 0; i < arena_.sub_mem_count; i++) {
-    //     sub_mem_btree.push_back(new Btree());
-    // }
     table_btree_ = new Btree();
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
@@ -99,7 +92,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
 
     for(int i=0; i<arena_.sub_mem_count; i++) {
         sub_mem_pending_node_index[i] = 0;
-        // sub_mem_pending_node[i]->push_back(_); 
+        sub_mem_pending_node[i].reserve(65536);
     }
 }
 

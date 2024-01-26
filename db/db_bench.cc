@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fstream>
 #include "db/db_impl.h"
 #include "db/version_set.h"
 #include "leveldb/cache.h"
@@ -125,9 +126,19 @@ static const char* FLAGS_db_disk = NULL;
 static const char* FLAGS_db_mem = NULL;
 //NoveLSM
 
+static std::string data_prefix = "/home/hxb/CacheKV-code/ycsb_output/1-node/workloads/";
+
 namespace leveldb {
 
 namespace {
+
+struct ycsb_operation{
+    char op;
+    char key[100];
+    char value[100];
+};
+
+std::vector<ycsb_operation>ycsb_operations;
 
 // Helper for quickly generating random data.
 class RandomGenerator {
@@ -537,7 +548,48 @@ public:
                 PrintStats("leveldb.stats");
             } else if (name == Slice("sstables")) {
                 PrintStats("leveldb.sstables");
-            } else {
+            } else if (name == Slice("ycsb_load_a")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_load_b")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_load_c")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_load_d")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_load_f")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_a")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_b")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_c")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_d")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_e")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_f")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_load_a_test")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            } else if (name == Slice("ycsb_a_test")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            }
+            
+            else {
                 if (name != Slice()) {  // No error message for empty name
                     fprintf(stderr, "unknown benchmark '%s'\n", name.ToString().c_str());
                 }
@@ -877,9 +929,7 @@ private:
 #endif
             snprintf(key, sizeof(key), "%016d", k);
             if (db_->Get(options, key, &value).ok()) {
-                // std::cout<<"in db_bench  get  key:"<<key<<", value:"<<value<<std::endl;
                 bytes += strlen(key) + value.size();
-                //printf("Finished reading %d\n", i);
                 found++;
             }else {
                 //Assert if we did not find some keys
@@ -1008,6 +1058,76 @@ private:
 
             // Do not count any of the preceding work/delay in stats.
             thread->stats.Start();
+        }
+    }
+
+    void LoadData(Slice name){
+        std::string file_loc = data_prefix + name.ToString();
+        std::ifstream file(file_loc.c_str(),std::ifstream::in);
+
+        std::string line;
+        ycsb_operation operation;
+
+        while (std::getline(file, line)) {
+            if (line.empty()) {
+                continue; // 跳过空行
+            }
+
+            if (line[0] == 'i' || line[0] == 'r' || line[0] == 'u' || line[0] == 'd') {
+                if (sscanf(line.c_str(), "%c %99s %[^\n]", &operation.op, operation.key, operation.value) != 3) {
+                    continue; // 跳过解析错误的行
+                }
+                
+                if(line[0] == 'i' || line[0] == 'u'){
+                    ycsb_operations.emplace_back(operation);
+                }else if(line[0] == 'r' || line[0] == 'd'){
+                    memset(operation.value,0,sizeof(operation.value));
+                    ycsb_operations.emplace_back(operation);
+                }
+            }
+            else{
+                continue; // 跳过无效行
+            }
+            // std::cout << "op: " << operation.op << std::endl;
+            // std::cout << "Key: " << operation.key << std::endl;
+            // std::cout << "Value: " << operation.value << std::endl;
+        }
+        file.close();
+    }
+
+    void RunYCSB(ThreadState* thread){
+        ReadOptions options;
+        WriteBatch batch;
+        for(auto operation:ycsb_operations){
+            Status s;
+            if(operation.op == 'i'){
+                char key[100];
+                snprintf(key, sizeof(key), "%020s", operation.key);
+                s = db_->Put(write_options_, key, operation.value);
+                thread->stats.FinishedSingleOp();
+            }else if(operation.op == 'r'){
+                char key[100];
+                std::string val;
+                snprintf(key, sizeof(key), "%020s", operation.key);
+                s = db_->Get(options, key, &val);
+                // std::cout<<"dbbench get val: "<<val<<std::endl;
+                thread->stats.FinishedSingleOp();
+            }else if(operation.op == 'u'){
+                char key[100];
+                snprintf(key, sizeof(key), "%020s", operation.key);
+                s = db_->Put(write_options_, key, operation.value);
+                thread->stats.FinishedSingleOp();
+            }else if(operation.op == 'd'){
+                char key[100];
+                snprintf(key, sizeof(key), "%020s", operation.key);
+                s = db_->Delete(write_options_, key);
+                thread->stats.FinishedSingleOp();
+            }
+
+            if (!s.ok()) {
+                fprintf(stderr, "Error: %s\n", s.ToString().c_str());
+                exit(1);
+            }
         }
     }
 

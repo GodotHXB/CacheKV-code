@@ -2,3 +2,5 @@
 out-static/
 hoard/libhoard.so
 build_config.mk
+ycsb-0.17.0/
+ycsb_output/
