@@ -51,6 +51,7 @@
 using namespace std;
 
 namespace leveldb {
+
 std::atomic_int subImmCount;
 
 const int kNumNonTableCacheFiles = 10;
@@ -901,21 +902,8 @@ void DBImpl::skiplistBackgroundSync(void *db) {
             if(index < pending) {
                 char *buf;
                 for(int j=index; j<pending; j++){
-                    // char *key_data = (char*)malloc(KEYSIZE+1);
-                    // char *val_data = (char*)malloc(VALSIZE+1);
                     buf = tmp_mem->sub_mem_pending_node[i][j];
-                    // need to dynamically change the VALSIZE 
-                    // memcpy(key_data, buf+1, KEYSIZE); // buf+1 to skip the key length byte
-                    // memcpy(val_data, buf+1+KEYSIZE+8+1, VALSIZE);
-                    // key_data[KEYSIZE] = '\0';
-                    // val_data[VALSIZE] = '\0';
                     tmp_mem->sub_mem_skiplist[i].Insert(buf);
-                    // Skiplist -> B+-Tree
-                    // int64_t key_data_int64 = atoi(key_data); // convert key to int64
-                    // std::cout<<key_data_int64<<std::endl;
-                    // tmp_mem->sub_mem_btree[i]->Insert(key_data_int64, val_data);
-                    // free(key_data);
-                    // free(val_data);
                 }
                 tmp_mem->sub_mem_pending_node_index[i] = pending;
             }
@@ -944,7 +932,12 @@ void DBImpl::subImmToImm(void *work) {
     if(!reinterpret_cast<DBImpl*>(db)->subImm_partition) {
         begin = 0;
         end = tmp_mem->arena_.sub_mem_count;
+        // std::cout<<"end: "<<end<<std::endl;
     }
+    
+    // MemTable* tmp_mem = reinterpret_cast<DBImpl*>(db)->mem_;
+    // int begin = 0;
+    // int end = tmp_mem->arena_.sub_mem_count;
 
 retry:
     for(int i=begin; i<end; i++)
@@ -982,8 +975,8 @@ retry:
         }
         tmp_mem->sub_mem_pending_node_index[sub_imm_index] = pending;
     }
-
-    memcpy(imm->arena_.map_start_, tmp_mem->arena_.map_start_ + SUB_MEM_SIZE * sub_imm_index, SUB_MEM_SIZE);
+    // std::cout<<"imm->arena_.map_start_: "<<imm->arena_.map_start_<<std::endl;
+    memcpy(imm->arena_.map_start_, tmp_mem->arena_.map_start_ + SUB_MEM_SIZE * sub_imm_index, SUB_MEM_SIZE); // 24 threads segmentation fault here
     for(int i=0; i < tmp_mem->table_.kMaxHeight; i++) {
         imm->table_.head_->SetNext(i, tmp_mem->sub_mem_skiplist[sub_imm_index].head_->Next(i));
         tmp_mem->sub_mem_skiplist[sub_imm_index].head_->SetNext(i, NULL);
@@ -1008,6 +1001,10 @@ retry:
 
     while(tmp_mem->isQueBusy.load());
     tmp_mem->subImmQue.push_front(imm);
+    // tmp_mem->subImmQueue.push_back(imm);
+    // std::cout<<"subImmQue front: "<<tmp_mem->subImmQue.front()<<std::endl;
+    // std::cout<<"subImmQue size    : "<<tmp_mem->subImmQue.size()<<std::endl;
+    // std::cout<<"subImmQue max size: "<<tmp_mem->subImmQue.max_size()<<std::endl;
     tmp_mem->arena_.in_trans_bset[sub_imm_index].store(0);
 
     sub_imm_index = -1;
@@ -1016,11 +1013,11 @@ retry:
 
 // Compaction of Sub-Skiplists
 void DBImpl::compactImm(void* db) {
+    // std::cout<<"in func compactImm"<<std::endl;
     clock_t start,end;
     start = clock();
     if(!reinterpret_cast<DBImpl*>(db)->inCompactImm.load() 
     && !reinterpret_cast<DBImpl*>(db)->inCompactImm.exchange(1)){
-
     }
     else{
         end = clock();
@@ -1031,43 +1028,65 @@ void DBImpl::compactImm(void* db) {
     MemTable* tmp_mem = reinterpret_cast<DBImpl*>(db)->mem_;
     MemTable* sub_imm;
     std::deque<MemTable*> tmp_subImmQue;
+    // deque to vector
+    // std::vector<MemTable*> tmp_subImmQueue;
 
 loop:
     if(!tmp_mem->isQueBusy.load() && !tmp_mem->isQueBusy.exchange(1)){
         std::swap(tmp_subImmQue, tmp_mem->subImmQue);
+        // std::swap(tmp_subImmQueue, tmp_mem->subImmQueue);
     }
     else{
         end = clock();
         reinterpret_cast<DBImpl*>(db)->total_run_time += (double)(end-start)/CLOCKS_PER_SEC;
+        // reinterpret_cast<DBImpl*>(db)->inCompactImm.store(0);
         return;
     }
     tmp_mem->isQueBusy.store(0);
 
     for(int i=0; i<tmp_subImmQue.size(); i++) {
+        std::cout<<"i: "<<i<<", subImmQue size: "<<tmp_subImmQue.size()<<std::endl;
         sub_imm = tmp_subImmQue[i];
         MemTable::Table::Iterator iter(&(sub_imm->table_));
-        iter.SeekToFirst();
+        iter.SeekToFirst(); // segment fault here
         void *p;
+        reinterpret_cast<DBImpl*>(db)->mem_->table_btree_->setInCompact(1);
         while(iter.Valid()){
             p = (void*)iter.node_;
             // key_offset type: char *
+
+            // get key ptr for B+-tree insertion
             const char* key_entry = reinterpret_cast<const char *>((intptr_t)iter.key_offset());
-            // char* key_offset = const_cast<char *>(iter.key_offset());
             uint32_t key_length;
             const char* key_ptr = GetVarint32Ptr(key_entry, key_entry+5, &key_length);
+            // EncodeFixed64(const_cast<char*>(key_ptr),n);
+            // const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
+            // SequenceNumber seqnum = n>>8;
+            // std::cout<<"tag: "<<n<<std::endl;
+            // std::cout<<"seqnum: "<<seqnum<<std::endl;
+
+            // char* new_key_ptr = new char[key_length+1];
+            // memcpy(new_key_ptr, key_ptr, key_length);
+            // new_key_ptr[key_length] = '\0';   // add '\0' to the end of val_ptr
+
             const char* val_entry = key_ptr+key_length;
             uint32_t value_length;
             const char* val_ptr = GetVarint32Ptr(val_entry,val_entry+5,&value_length);
-            // memcpy(val_ptr, v.data(), v.size());
-            // val_ptr[v.size()] = '\0';   // add '\0' to the end of val_ptr
+            // char* new_val_ptr = new char[value_length+1];
+            // memcpy(new_val_ptr, val_ptr, value_length);
+            // new_val_ptr[value_length] = '\0';   // add '\0' to the end of val_ptr
+
             iter.Next();
             // tmp_mem->table_.InsertNode(p);  // sub skiplists -> global skiplist
-            tmp_mem->table_btree_->Insert(const_cast<char*>(key_ptr),const_cast<char*>(val_ptr));  // sub skiplists -> global B+-Tree
+            tmp_mem->table_btree_->Insert(const_cast<char*>(key_ptr),const_cast<char*>(val_entry));  // sub skiplists -> global B+-Tree
         }
-        reinterpret_cast<DBImpl*>(db)->compactImmQue.push_back(sub_imm);
+        // std::cout<<"start to split pages"<<std::endl;
+        reinterpret_cast<DBImpl*>(db)->mem_->table_btree_->setInCompact(0);
+        tmp_mem->table_btree_->splitPage(true);
     }
     tmp_subImmQue.clear();
     if(tmp_mem->subImmQue.size() > reinterpret_cast<DBImpl*>(db)->compactImm_threshold){
+        std::cout<<"tmp_mem->subImmQue() size: "<<tmp_mem->subImmQue.size()<<std::endl;
 		goto loop;
 	}
     reinterpret_cast<DBImpl*>(db)->inCompactImm.store(0);
@@ -1475,7 +1494,8 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
 
     // Collect together all needed child iterators
     std::vector<Iterator*> list;
-    list.push_back(mem_->NewIterator());
+    // list.push_back(mem_->NewIterator());
+    list.push_back(mem_->NewBtreeIterator());
     mem_->Ref();
 
     if(!inSkiplistBgSync.load() && !inSkiplistBgSync.exchange(1)) {
@@ -1791,8 +1811,10 @@ MemTable* DBImpl::CreateNVMtable(bool assign_map){
     MemTable* mem;
 #ifdef ENABLE_RECOVERY
     uint64_t new_map_number = versions_->NewFileNumber();
+    // std::cout<<"new_map_number: "<<new_map_number<<std::endl;
     size_t size = 0;
     std::string filename = MapFileName(dbname_mem_, new_map_number);
+    // std::cout<<"filename: "<<filename<<std::endl;
     size = nvmbuff_;
     if (!assign_map)
         mapfile_number_ = new_map_number;
@@ -1864,8 +1886,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
             break;
         } else if(compactImm_threshold>0 && mem_->subImmQue.size()>compactImm_threshold && !inCompactImm.load()) {
                 env_->Schedule(&DBImpl::compactImm, (void*)this);
-                break;
-        } else if (tmp_mem_count <= mem_->arena_.sub_mem_count){
+        } else if (tmp_mem_count < mem_->arena_.sub_mem_count){
                 break;
         }         
     }

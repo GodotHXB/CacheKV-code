@@ -7,6 +7,7 @@
 
 #include "leveldb/iterator.h"
 #include "leveldb/slice.h"
+#include <iostream>
 
 namespace leveldb {
 

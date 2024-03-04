@@ -177,11 +177,17 @@ inline bool ParseInternalKey(const Slice& internal_key,
                              ParsedInternalKey* result) {
   const size_t n = internal_key.size();
   if (n < 8) return false;
+  // std::cout<<"internal_key size: "<<internal_key.size()<<std::endl;
+  // std::cout<<"internal_key data: "<<internal_key.data()<<std::endl;
   uint64_t num = DecodeFixed64(internal_key.data() + n - 8);
+  // std::cout<<"num: "<<num<<std::endl;
   unsigned char c = num & 0xff;
   result->sequence = num >> 8;
   result->type = static_cast<ValueType>(c);
   result->user_key = Slice(internal_key.data(), n - 8);
+  // std::cout<<"sequence: "<<result->sequence<<std::endl;
+  // std::cout<<"type: "<<result->type<<std::endl;
+  // std::cout<<"user_key: "<<result->user_key.ToString()<<std::endl;
   return (c <= static_cast<unsigned char>(kTypeValue));
 }
 

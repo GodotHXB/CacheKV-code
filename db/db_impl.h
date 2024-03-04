@@ -19,9 +19,6 @@
 
 #define NUMEMTABLE 0
 #define NUMEMTABLE_NVM 10
-#define KEYSIZE 16
-#define VALSIZE 64
-
 
 namespace leveldb {
 
@@ -153,7 +150,6 @@ public:
     volatile bool subImmKill;
 
     static void compactImm(void* db);
-    std::deque<MemTable*> compactImmQue;
     std::atomic_bool inCompactImm;
 
     size_t skiplistSync_threshold;

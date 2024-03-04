@@ -1,0 +1,225 @@
+Running with --threads=4, Run #1
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       2.147 micros/op;  141.7 MB/s
+readrandom   :       2.459 micros/op;  123.8 MB/s (10000000 of 10000000 found)
+total compaction time: 440.624
+Running with --threads=4, Run #2
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       2.085 micros/op;  145.9 MB/s
+readrandom   :       2.456 micros/op;  124.0 MB/s (10000000 of 10000000 found)
+total compaction time: 432.633
+Running with --threads=4, Run #3
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       2.128 micros/op;  143.1 MB/s
+readrandom   :       2.501 micros/op;  121.8 MB/s (10000000 of 10000000 found)
+total compaction time: 434.809
+Running with --threads=4, Run #4
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       2.112 micros/op;  144.2 MB/s
+readrandom   :       2.435 micros/op;  125.1 MB/s (10000000 of 10000000 found)
+total compaction time: 441.062
+Running with --threads=4, Run #5
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       2.071 micros/op;  146.4 MB/s
+readrandom   :       2.518 micros/op;  120.4 MB/s (10000000 of 10000000 found)
+total compaction time: 434.312
+Running with --threads=8, Run #1
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       4.381 micros/op;  138.0 MB/s
+readrandom   :       5.202 micros/op;  116.4 MB/s (10000000 of 10000000 found)
+total compaction time: 1090.57
+Running with --threads=8, Run #2
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 2e-06
+fillrandom   :       4.364 micros/op;  138.5 MB/s
+readrandom   :       5.345 micros/op;  113.5 MB/s (10000000 of 10000000 found)
+total compaction time: 1085.07
+Running with --threads=8, Run #3
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       4.426 micros/op;  137.6 MB/s
+readrandom   :       4.976 micros/op;  121.8 MB/s (10000000 of 10000000 found)
+total compaction time: 1092.71
+Running with --threads=8, Run #4
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       4.400 micros/op;  138.1 MB/s
+readrandom   :       5.293 micros/op;  114.9 MB/s (10000000 of 10000000 found)
+total compaction time: 1085.64
+Running with --threads=8, Run #5
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :       4.423 micros/op;  136.8 MB/s
+readrandom   :       5.414 micros/op;  112.2 MB/s (10000000 of 10000000 found)
+total compaction time: 1087.44
+Running with --threads=16, Run #1
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :      10.341 micros/op;  116.6 MB/s
+readrandom   :      11.591 micros/op;  104.7 MB/s (10000000 of 10000000 found)
+total compaction time: 3123.56
+Running with --threads=16, Run #2
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 2e-06
+fillrandom   :      11.124 micros/op;  108.4 MB/s
+readrandom   :      11.399 micros/op;  106.6 MB/s (10000000 of 10000000 found)
+total compaction time: 3249.71
+Running with --threads=16, Run #3
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 2e-06
+fillrandom   :      10.432 micros/op;  115.9 MB/s
+readrandom   :      11.063 micros/op;  109.3 MB/s (10000000 of 10000000 found)
+total compaction time: 3164.78
+Running with --threads=16, Run #4
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+fillrandom   :      11.116 micros/op;  109.1 MB/s
+readrandom   :      11.262 micros/op;  107.4 MB/s (10000000 of 10000000 found)
+total compaction time: 3271.32
+Running with --threads=16, Run #5
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 2e-06
+fillrandom   :      11.424 micros/op;  105.9 MB/s
+readrandom   :      11.456 micros/op;  106.2 MB/s (10000000 of 10000000 found)
+total compaction time: 3228.02
+Running with --threads=24, Run #1
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 2e-06
+Running with --threads=24, Run #2
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 2e-06
+Running with --threads=24, Run #3
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+Running with --threads=24, Run #4
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06
+Running with --threads=24, Run #5
+Default db path: /mnt/pmemdir/dbbench
+Keys:       16 bytes each
+Values:     64 bytes each (64 bytes after compression)
+Entries:    10000000
+RawSize:    762.9 MB (estimated)
+FileSize:   762.9 MB (estimated)
+------------------------------------------------
+total compaction time: 3e-06

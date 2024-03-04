@@ -3,7 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "table/merger.h"
-
+#include <iostream>
 #include "leveldb/comparator.h"
 #include "leveldb/iterator.h"
 #include "table/iterator_wrapper.h"
@@ -156,7 +156,9 @@ void MergingIterator::FindSmallest() {
   IteratorWrapper* smallest = NULL;
   for (int i = 0; i < n_; i++) {
     IteratorWrapper* child = &children_[i];
+    // std::cout<<"i="<<i<<", key:"<<child->key().ToString()<<std::endl;
     if (child->Valid()) {
+      // std::cout<<"i="<<i<<", key:"<<child->key().ToString()<<std::endl;
       if (smallest == NULL) {
         smallest = child;
       } else if (comparator_->Compare(child->key(), smallest->key()) < 0) {

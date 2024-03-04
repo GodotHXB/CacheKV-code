@@ -14,8 +14,11 @@
 
 #include <unistd.h>
 #include <atomic>
+
+// #define SKIPLIST_ALLOC_SIZE 262144
+// #define SKIPLIST_ALLOC_SIZE 524288
+// #define SKIPLIST_ALLOC_SIZE 1048576
 #define SKIPLIST_ALLOC_SIZE 2097152
-#define BTREE_ALLOC_SIZE 2097152
 
 #include <pqos.h>
 #define MAX_L3CAT_NUM 16
@@ -47,7 +50,6 @@ Arena::Arena()
     nvmarena_ = false;
     fd = -1;
     kSize = kBlockSize;
-    blocks_.reserve(10240);
 }
 
 
@@ -258,9 +260,6 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
     }
 
     // for(int i=0;i<sub_mem_count;i++){
-    //     std::cout<<"sub_mem_alloc_ptr["<<i<<"] = "<<sub_mem_alloc_ptr_[i]<<std::endl;
-    // }
-    // for(int i=0;i<sub_mem_count;i++){
     //     std::cout<<"sub_mem_alloc_bytes_remaining["<<i<<"] = "<<sub_mem_alloc_bytes_remaining[i]<<std::endl;
     // }
     // std::cout<<"---------"<<std::endl;
@@ -281,6 +280,7 @@ ArenaNVM::ArenaNVM(long size, std::string *filename, bool recovery)
         skiplist_alloc_ptr_[i] = NULL;
         skiplist_alloc_bytes_remaining_[i] = 0;
     }
+    // std::cout<<"sub mem count: "<<sub_mem_count<<std::endl;
 }
 #else
 ArenaNVM::ArenaNVM()
@@ -737,17 +737,13 @@ char* ArenaNVM::AllocateAligned(size_t bytes) {
 
 char* ArenaNVM::Allocate(size_t bytes) {
     assert(bytes > 0);
-
-    splock.lock();
     
     if(!allocation && !AllocateFallbackNVM(bytes)){
-        splock.unlock();
         return NULL;
     }
     
     unsigned int cpu;
     if(syscall(SYS_getcpu, &cpu, NULL, NULL)) {
-        splock.unlock();
         return NULL;
     }
 
@@ -755,13 +751,11 @@ char* ArenaNVM::Allocate(size_t bytes) {
         if(sub_mem_alloc_ptr_[cpu]) {
             if(swap_sub_mem(cpu) == -1)
             {
-                splock.unlock();
                 return NULL;
             } 
         }
         else {
             if(alloc_sub_mem(cpu) == -1){
-                splock.unlock();
                 return NULL;
             }
         }
@@ -776,7 +770,6 @@ char* ArenaNVM::Allocate(size_t bytes) {
 #if defined(ENABLE_RECOVERY)
     memory_usage_.NoBarrier_Store(reinterpret_cast<void*>(MemoryUsage() + bytes + sizeof(char*)));
 #endif
-    splock.unlock();
     return result;
 }
 

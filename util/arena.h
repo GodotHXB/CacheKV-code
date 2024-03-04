@@ -21,8 +21,10 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
+// #define SUB_MEM_SIZE 262144
+// #define SUB_MEM_SIZE 524288
+// #define SUB_MEM_SIZE 1048576
 #define SUB_MEM_SIZE 2097152
-
 
 namespace leveldb {
 

@@ -563,7 +563,10 @@ public:
             } else if (name == Slice("ycsb_load_f")){
                 LoadData(name);
                 method = &Benchmark::RunYCSB;
-            } else if (name == Slice("ycsb_a")){
+            } else if (name == Slice("ycsb_load_load")){
+                LoadData(name);
+                method = &Benchmark::RunYCSB;
+            }else if (name == Slice("ycsb_a")){
                 LoadData(name);
                 method = &Benchmark::RunYCSB;
             } else if (name == Slice("ycsb_b")){
@@ -880,12 +883,15 @@ private:
         int64_t bytes = 0;
 
         for (iter->SeekToFirst(); i < reads_ && iter->Valid(); iter->Next()) {
+            // std::cout<<"key: "<<iter->key().ToString()<<",value: "<<iter->value().ToString()<<std::endl;
             bytes += iter->key().size() + iter->value().size();
+            // std::cout<<"key size: "<<iter->key().size()<<",value size: "<<iter->value().size()<<std::endl;
             thread->stats.FinishedSingleOp();
             ++i;
         }
         delete iter;
         thread->stats.AddBytes(bytes);
+        // std::cout<<"bytes: "<<bytes<<",reads: "<<i<<std::endl;
     }
 
     timespec diff(timespec start, timespec end)
@@ -929,6 +935,7 @@ private:
 #endif
             snprintf(key, sizeof(key), "%016d", k);
             if (db_->Get(options, key, &value).ok()) {
+                // std::cout<<"key: "<<key<<",value: "<<value<<std::endl;
                 bytes += strlen(key) + value.size();
                 found++;
             }else {
@@ -943,6 +950,7 @@ private:
         //NoveLSM: Output throughput for ReadRandom for Graph purposes
         thread->stats.AddBytes(bytes);
         thread->stats.AddMessage(msg);
+        // std::cout<<"bytes: "<<bytes<<",reads: "<<found<<std::endl;
     }
 
     void ReadReverse(ThreadState* thread) {

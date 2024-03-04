@@ -384,8 +384,9 @@ namespace leveldb{
         int i = *num_entries - 1, inserted = 0, to_flush_cnt = 0;
         records[*num_entries + 1].ptr = records[*num_entries].ptr;
         if (flush) {
-        if ((uint64_t) & (records[*num_entries + 1].ptr) % CACHE_LINE_SIZE == 0)
+        if ((uint64_t) & (records[*num_entries + 1].ptr) % CACHE_LINE_SIZE == 0){
             clflush((char *)&(records[*num_entries + 1].ptr), sizeof(char *));
+            }
         }
 
         // FAST
@@ -423,8 +424,9 @@ namespace leveldb{
         records[0].ptr = (char *)hdr.leftmost_ptr;
         records[0].key = key;
         records[0].ptr = ptr;
-        if (flush)
+        if (flush){
             clflush((char *)&records[0], sizeof(Entry));
+            }
         }
     }
 
@@ -461,88 +463,299 @@ namespace leveldb{
     }
 
     register int num_entries = count();
-
     // FAST
     if (num_entries < cardinality - 1) {
         insert_key(key, right, &num_entries, flush);
-
         if (with_lock) {
-        hdr.mtx->unlock(); // Unlock the write lock
+            hdr.mtx->unlock(); // Unlock the write lock
         }
-
         return this;
-    } else { // FAIR
+    } else { 
+        // FAIR
         // overflow
         // create a new node
-        Page *sibling = new Page(hdr.level);
-        register int m = (int)ceil(num_entries / 2);
-        entry_key_t split_key = records[m].key;
+        Page* tmp_page;         // use tmp_page as the extend of current page
+        Page* cur_page = this;
+        int tmp_cnt = 0;
+        // std::cout<<"inCompact: "<<bt->getInCompact()<<std::endl;
+        if(bt->getInCompact()){ // if in compaction, insert kv-pair but postpone the split
+            // insert into a new temporary page
+            if(cur_page->hdr.extend_ptr){  // current page is extended
+                while(cur_page->hdr.extend_ptr){  // find the last extend page
+                    // std::cout<<"cur_page: "<<cur_page<<" is full, goto extend page: "<<cur_page->hdr.extend_ptr<<std::endl;
+                    cur_page = cur_page->hdr.extend_ptr;
+                } // end when there is no extend page or extend page is not full
+                if(cur_page->count() >= cardinality - 1){ // the last extend page is full
+                    cur_page->hdr.extend_ptr = tmp_page = new Page(hdr.level); 
+                    tmp_cnt = 0;
+                }else{ // extend page is not full
+                    tmp_page = cur_page;
+                    tmp_cnt = cur_page->count();
+                }
+            }
+            else if(!cur_page->hdr.extend_ptr){ // there is no extend page
+                cur_page->hdr.extend_ptr = tmp_page = new Page(hdr.level);
+                tmp_cnt = 0;
+            }
 
-        // migrate half of keys into the sibling
-        int sibling_cnt = 0;
-        if (hdr.leftmost_ptr == NULL) { // leaf node
-        for (int i = m; i < num_entries; ++i) {
-            sibling->insert_key(records[i].key, records[i].ptr, &sibling_cnt,
-                                false);
+            // std::cout<<"start_page: "<<this<<", tmp_page: "<<tmp_page<<std::endl;
+
+            tmp_page->insert_key(key, right, &tmp_cnt, flush);
+            // tmp_page->print();
+            if (with_lock) {
+                hdr.mtx->unlock(); // Unlock the write lock
+            }
+            bt->pending_split_page.push_back(this); // add the start page into waiting list
+            return tmp_page;
         }
-        } else { // internal node
-        for (int i = m + 1; i < num_entries; ++i) {
-            sibling->insert_key(records[i].key, records[i].ptr, &sibling_cnt,
-                                false);
-        }
-        sibling->hdr.leftmost_ptr = (Page *)records[m].ptr;
-        }
+        else{ // not in compaction, split the page(s) and insert the new kv
+            cur_page = this; // start split from the origin page
+            // std::cout<<"cur_page: "<<cur_page<<" , cur_page->count(): "<<cur_page->count()<<std::endl;
+            while( cur_page == this || cur_page->hdr.extend_ptr ){ // the page needs to split 
+                Page *sibling = new Page(hdr.level);
+                register int m = (int)ceil(num_entries / 2);
+                entry_key_t split_key = cur_page->records[m].key;
+                // std::cout<<"num_entries: "<<num_entries<<std::endl;
+                // std::cout<<"split_key: "<<split_key<<std::endl;
 
-        sibling->hdr.sibling_ptr = hdr.sibling_ptr;
-        clflush((char *)sibling, sizeof(Page));
+                // migrate half of keys into the sibling
+                int sibling_cnt = 0;
+                if (cur_page->hdr.leftmost_ptr == NULL) { // leaf node
+                    for (int i = m; i < num_entries; ++i) {
+                        sibling->insert_key(cur_page->records[i].key, cur_page->records[i].ptr, &sibling_cnt,
+                                            false);
+                }
+                } else { // internal node
+                    for (int i = m + 1; i < num_entries; ++i) {
+                        sibling->insert_key(cur_page->records[i].key, cur_page->records[i].ptr, &sibling_cnt,
+                                            false);
+                    }
+                    sibling->hdr.leftmost_ptr = (Page *)cur_page->records[m].ptr;
+                }
 
-        hdr.sibling_ptr = sibling;
-        clflush((char *)&hdr, sizeof(hdr));
+                sibling->hdr.sibling_ptr = cur_page->hdr.sibling_ptr;
+                clflush((char *)sibling, sizeof(Page));
 
-        // set to NULL
-        if (IS_FORWARD(hdr.switch_counter))
-            hdr.switch_counter += 2;
-        else
-            ++hdr.switch_counter;
-        records[m].ptr = NULL;
-        clflush((char *)&records[m], sizeof(Entry));
+                cur_page->hdr.sibling_ptr = sibling;
+                clflush((char *)&hdr, sizeof(hdr));
 
-        hdr.last_index = m - 1;
-        clflush((char *)&(hdr.last_index), sizeof(int16_t));
+                // set to NULL
+                if (IS_FORWARD(cur_page->hdr.switch_counter))
+                    cur_page->hdr.switch_counter += 2;
+                else
+                    ++cur_page->hdr.switch_counter;
+                cur_page->records[m].ptr = NULL;
+                clflush((char *)&cur_page->records[m], sizeof(Entry));
 
-        num_entries = hdr.last_index + 1;
+                cur_page->hdr.last_index = m - 1;
+                clflush((char *)&(cur_page->hdr.last_index), sizeof(int16_t));
 
-        Page *ret;
+                num_entries = cur_page->hdr.last_index + 1;
+                std::cout<<"page: "<<cur_page<<" is splitted, next page: "<<cur_page->hdr.extend_ptr<<", next page cnt: "<<cur_page->hdr.extend_ptr->count()<<std::endl;
+                cur_page = cur_page->hdr.extend_ptr;
+            }
+            // Page *sibling = new Page(hdr.level);
+            // register int m = (int)ceil(num_entries / 2);
+            // entry_key_t split_key = records[m].key;
 
-        // insert the key
-        if (key < split_key) {
-            insert_key(key, right, &num_entries);
-            ret = this;
-        } else {
-            sibling->insert_key(key, right, &sibling_cnt);
-            ret = sibling;
-        }
+            // // migrate half of keys into the sibling
+            // int sibling_cnt = 0;
+            // if (hdr.leftmost_ptr == NULL) { // leaf node
+            //     for (int i = m; i < num_entries; ++i) {
+            //         sibling->insert_key(records[i].key, records[i].ptr, &sibling_cnt,
+            //                             false);
+            // }
+            // } else { // internal node
+            //     for (int i = m + 1; i < num_entries; ++i) {
+            //         sibling->insert_key(records[i].key, records[i].ptr, &sibling_cnt,
+            //                             false);
+            //     }
+            //     sibling->hdr.leftmost_ptr = (Page *)records[m].ptr;
+            // }
 
-        // Set a new root or insert the split key to the parent
-        if (bt->root == (char *)this) { // only one node can update the root ptr
-        Page *new_root =
-            new Page((Page *)this, split_key, sibling, hdr.level + 1);
-        bt->setNewRoot((char *)new_root);
+            // sibling->hdr.sibling_ptr = hdr.sibling_ptr;
+            // clflush((char *)sibling, sizeof(Page));
 
-        if (with_lock) {
-            hdr.mtx->unlock(); // Unlock the write lock
-        }
-        } else {
-        if (with_lock) {
-            hdr.mtx->unlock(); // Unlock the write lock
-        }
-        bt->btree_insert_internal(NULL, split_key, (char *)sibling,
-                                    hdr.level + 1);
-        }
+            // hdr.sibling_ptr = sibling;
+            // clflush((char *)&hdr, sizeof(hdr));
 
-        return ret;
-    }
-    }
+            // // set to NULL
+            // if (IS_FORWARD(hdr.switch_counter))
+            //     hdr.switch_counter += 2;
+            // else
+            //     ++hdr.switch_counter;
+            // records[m].ptr = NULL;
+            // clflush((char *)&records[m], sizeof(Entry));
+
+            // hdr.last_index = m - 1;
+            // clflush((char *)&(hdr.last_index), sizeof(int16_t));
+
+            // num_entries = hdr.last_index + 1;
+
+            Page *ret = NULL;
+            cur_page = this;
+            std::cout<<"key: "<<key<<" needs to be inserted"<<std::endl;
+            std::cout<<"start page: "<<this<<", current page: "<<cur_page<<", extend page: "<<cur_page->hdr.extend_ptr<<std::endl;
+            cur_page->print();
+            while(cur_page == this || cur_page->hdr.extend_ptr){
+                int num_entries_in_cur_page = cur_page->count();
+                std::cout<<"cur_page: "<<cur_page<<", num_entries: "<<num_entries<<", num_entries in cur: "<<num_entries_in_cur_page<<", cur_page->records[num_entries].key: "<<cur_page->records[num_entries_in_cur_page-1].key<<std::endl;
+                if (key < cur_page->records[num_entries].key) { // key should be inserted into current page
+                    std::cout<<"insert into current page"<<std::endl;
+                    cur_page->insert_key(key, right, &num_entries);
+                    ret = cur_page;
+                    if(cur_page == this)break;
+                } else if(key >= cur_page->records[num_entries].key && key < cur_page->hdr.sibling_ptr->records[num_entries].key){  // key should be inserted into sibling page
+                    std::cout<<"insert into sibling page"<<std::endl;
+                    cur_page->hdr.sibling_ptr->insert_key(key,right, &num_entries);
+                    ret = cur_page->hdr.sibling_ptr;
+                    if(cur_page == this)break;
+                } else{
+                    std::cout<<"not found, keep searching"<<std::endl;
+                    cur_page = cur_page->hdr.extend_ptr; // key should be inserted into extend page, but don't know the exact place, keep searching
+                    continue;
+                }
+            }
+
+            if(with_lock){
+                hdr.mtx->unlock();
+            }
+
+            // Set a new root or insert the split key to the parent
+            // if (bt->root == (char *)this) { // only one node can update the root ptr
+            //     Page *new_root =
+            //         new Page((Page *)this, cur_page->records[num_entries].key, cur_page->hdr.sibling_ptr, hdr.level + 1);
+            //     bt->setNewRoot((char *)new_root);
+
+            //     if (with_lock) {
+            //         hdr.mtx->unlock(); // Unlock the write lock
+            //     }
+            // } else {
+            //     if (with_lock) {
+            //         hdr.mtx->unlock(); // Unlock the write lock
+            //     }
+            //     while(cur_page->hdr.extend_ptr){
+            //         bt->btree_insert_internal(NULL, cur_page->records[num_entries].key, (char *)cur_page->hdr.sibling_ptr,
+            //                                     hdr.level + 1);
+            //         cur_page = cur_page->hdr.extend_ptr;
+            //     }
+            // }
+            return ret;
+        } 
+    } // end of FAIR
+} // end of store function
+ 
+
+// original
+//  Insert a new key - FAST and FAIR
+//   Page* Page::store(Btree *bt, char *left, entry_key_t key, char *right, bool flush,
+//               bool with_lock, Page *invalid_sibling = NULL) {
+//     if (with_lock) {
+//       hdr.mtx->lock(); // Lock the write lock
+//     }
+//     if (hdr.is_deleted) {
+//       if (with_lock) {
+//         hdr.mtx->unlock();
+//       }
+
+//       return NULL;
+//     }
+
+//     // If this node has a sibling node,
+//     if (hdr.sibling_ptr && (hdr.sibling_ptr != invalid_sibling)) {
+//       // Compare this key with the first key of the sibling
+//       if (key > hdr.sibling_ptr->records[0].key) {
+//         if (with_lock) {
+//           hdr.mtx->unlock(); // Unlock the write lock
+//         }
+//         return hdr.sibling_ptr->store(bt, NULL, key, right, true, with_lock,
+//                                       invalid_sibling);
+//       }
+//     }
+
+//     register int num_entries = count();
+
+//     // FAST
+//     if (num_entries < cardinality - 1) {
+//       insert_key(key, right, &num_entries, flush);
+
+//       if (with_lock) {
+//         hdr.mtx->unlock(); // Unlock the write lock
+//       }
+
+//       return this;
+//     } else { // FAIR
+//       // overflow
+//       // create a new node
+//       Page *sibling = new Page(hdr.level);
+//       register int m = (int)ceil(num_entries / 2);
+//       entry_key_t split_key = records[m].key;
+
+//       // migrate half of keys into the sibling
+//       int sibling_cnt = 0;
+//       if (hdr.leftmost_ptr == NULL) { // leaf node
+//         for (int i = m; i < num_entries; ++i) {
+//           sibling->insert_key(records[i].key, records[i].ptr, &sibling_cnt,
+//                               false);
+//         }
+//       } else { // internal node
+//         for (int i = m + 1; i < num_entries; ++i) {
+//           sibling->insert_key(records[i].key, records[i].ptr, &sibling_cnt,
+//                               false);
+//         }
+//         sibling->hdr.leftmost_ptr = (Page *)records[m].ptr;
+//       }
+
+//       sibling->hdr.sibling_ptr = hdr.sibling_ptr;
+//       clflush((char *)sibling, sizeof(Page));
+
+//       hdr.sibling_ptr = sibling;
+//       clflush((char *)&hdr, sizeof(hdr));
+
+//       // set to NULL
+//       if (IS_FORWARD(hdr.switch_counter))
+//         hdr.switch_counter += 2;
+//       else
+//         ++hdr.switch_counter;
+//       records[m].ptr = NULL;
+//       clflush((char *)&records[m], sizeof(Entry));
+
+//       hdr.last_index = m - 1;
+//       clflush((char *)&(hdr.last_index), sizeof(int16_t));
+
+//       num_entries = hdr.last_index + 1;
+
+//       Page *ret;
+
+//       // insert the key
+//       if (key < split_key) {
+//         insert_key(key, right, &num_entries);
+//         ret = this;
+//       } else {
+//         sibling->insert_key(key, right, &sibling_cnt);
+//         ret = sibling;
+//       }
+
+//       // Set a new root or insert the split key to the parent
+//       if (bt->root == (char *)this) { // only one node can update the root ptr
+//         Page *new_root =
+//             new Page((Page *)this, split_key, sibling, hdr.level + 1);
+//         bt->setNewRoot((char *)new_root);
+
+//         if (with_lock) {
+//           hdr.mtx->unlock(); // Unlock the write lock
+//         }
+//       } else {
+//         if (with_lock) {
+//           hdr.mtx->unlock(); // Unlock the write lock
+//         }
+//         bt->btree_insert_internal(NULL, split_key, (char *)sibling,
+//                                   hdr.level + 1);
+//       }
+
+//       return ret;
+//     }
+//   }
 
     // Search keys with linear search
     void Page::linear_search_range(entry_key_t min, entry_key_t max,
@@ -790,6 +1003,7 @@ namespace leveldb{
     Btree::Btree() {
         root = (char *)new Page();
         height = 1;
+        inCompact = 0;
     }
 
     void Btree::setNewRoot(char *new_root) {
@@ -838,6 +1052,7 @@ namespace leveldb{
     void Btree::Insert(char *key, char *right) { // need to be string
         Page *p = (Page *)root;
         entry_key_t key_int64 = int64_atoi(key, strlen(key));
+        mapping[key_int64] = key;
 
         while (p->hdr.leftmost_ptr != NULL) {
             p = (Page *)p->linear_search(key_int64);
@@ -971,6 +1186,109 @@ namespace leveldb{
 
         printf("total number of keys: %d\n", total_keys);
         pthread_mutex_unlock(&print_mtx);
+    }
+
+    char* Btree::getMapping(int64_t key_int64){
+        return mapping[key_int64];
+    }
+
+    void Btree::setInCompact(bool st){
+        inCompact = st;
+    }
+
+    bool Btree::getInCompact(){
+        return inCompact;
+    }
+
+    void Btree::setInSplit(bool st){
+        inSplit = st;
+    }
+
+    bool Btree::getInSplit(){
+        return inSplit;
+    }
+
+    // just for split the pending pages
+    void Btree::splitPage(bool with_lock){
+        Page* cur_page;
+        Page* start_page;
+        std::cout<<"split_page size: "<<pending_split_page.size()<<std::endl;
+        for(int i=0; i<pending_split_page.size(); i++){
+            // std::cout<<"i: "<<i<<", split_page size: "<<pending_split_page.size()<<std::endl;
+            start_page = cur_page = pending_split_page[i]; // start split from the origin page
+            if(with_lock){
+                start_page->hdr.mtx->lock();
+            }
+            int num_entries = cur_page->count();
+            // std::cout<<"cur_page: "<<cur_page<<" , cur_page->count(): "<<cur_page->count()<<std::endl;
+            while(cur_page->hdr.extend_ptr && cur_page->count() >= cardinality - 1){ // the page needs to split 
+                Page *sibling = new Page(cur_page->hdr.level);
+                register int m = (int)ceil(num_entries / 2);
+                entry_key_t split_key = cur_page->records[m].key;
+                // std::cout<<"num_entries: "<<num_entries<<std::endl;
+                // std::cout<<"split_key: "<<split_key<<std::endl;
+
+                // migrate half of keys into the sibling
+                int sibling_cnt = 0;
+                if (cur_page->hdr.leftmost_ptr == NULL) { // leaf node
+                    for (int i = m; i < num_entries; ++i) {
+                        sibling->insert_key(cur_page->records[i].key, cur_page->records[i].ptr, &sibling_cnt,
+                                            false);
+                }
+                } else { // internal node
+                    for (int i = m + 1; i < num_entries; ++i) {
+                        sibling->insert_key(cur_page->records[i].key, cur_page->records[i].ptr, &sibling_cnt,
+                                            false);
+                    }
+                    sibling->hdr.leftmost_ptr = (Page *)cur_page->records[m].ptr;
+                }
+
+                sibling->hdr.sibling_ptr = cur_page->hdr.sibling_ptr;
+                clflush((char *)sibling, sizeof(Page));
+
+                cur_page->hdr.sibling_ptr = sibling;
+                clflush((char *)&cur_page->hdr, sizeof(cur_page->hdr));
+
+                // set to NULL
+                if (IS_FORWARD(cur_page->hdr.switch_counter))
+                    cur_page->hdr.switch_counter += 2;
+                else
+                    ++cur_page->hdr.switch_counter;
+                cur_page->records[m].ptr = NULL;
+                clflush((char *)&cur_page->records[m], sizeof(Entry));
+
+                cur_page->hdr.last_index = m - 1;
+                clflush((char *)&(cur_page->hdr.last_index), sizeof(int16_t));
+
+                num_entries = cur_page->hdr.last_index + 1;
+                // std::cout<<"page: "<<cur_page<<" is splitted, next page: "<<cur_page->hdr.extend_ptr<<", current page cnt: "<<cur_page->count()<<std::endl;
+                cur_page = cur_page->hdr.extend_ptr;
+            } 
+            // TODO: update the root or insert the split key to parent
+            bool with_lock = true; // set to with lock(default)
+            if (this->root == (char *)start_page) { // only one node can update the root ptr
+                Page *new_root =
+                    new Page(start_page, cur_page->records[num_entries].key, cur_page->hdr.sibling_ptr, cur_page->hdr.level + 1);
+                this->setNewRoot((char *)new_root);
+                std::cout<<"set new root in split func"<<std::endl;
+
+                if (with_lock) { 
+                    start_page->hdr.mtx->unlock(); // Unlock the write lock
+                }
+            } else {
+                if (with_lock) {
+                    start_page->hdr.mtx->unlock(); // Unlock the write lock
+                }
+                while(cur_page->hdr.extend_ptr){
+                    this->btree_insert_internal(NULL, cur_page->records[num_entries].key, (char *)cur_page->hdr.sibling_ptr,
+                                                cur_page->hdr.level + 1);
+                    cur_page = cur_page->hdr.extend_ptr;
+                    std::cout<<"insert the split key to parent in split func"<<std::endl;
+                }
+            }
+        }
+        pending_split_page.clear();
+        // std::cout<<"quit split func"<<std::endl;
     }
 
     BtreeIterator* Btree::getIterator(){

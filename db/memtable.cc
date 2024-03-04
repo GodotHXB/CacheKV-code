@@ -18,12 +18,17 @@
 #include <string>
 #include <unordered_set>
 #include <iostream>
-
+#include <iomanip>
+#include <sstream> 
+#include <cstring>
 
 namespace leveldb {
 
-pthread_mutex_t mutex_alloc;
+#define MAX_SUBIMMQUE_SIZE 50000
 
+pthread_mutex_t mutex_alloc;
+pthread_mutex_t mutex_btree;
+pthread_spinlock_t spinlock_alloc;
 
 void MemTable::AddPredictIndex
                 (std::unordered_set<std::string> *set,
@@ -65,6 +70,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp)
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_);
     table_btree_ = new Btree();
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
+    // subImmQueue.reserve(MAX_SUBIMMQUE_SIZE);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
     isQueBusy.store(0);
 
@@ -87,6 +93,8 @@ MemTable::MemTable(const InternalKeyComparator& cmp, ArenaNVM& arena, bool recov
     sub_mem_skiplist = new Table[arena_.sub_mem_count](comparator_, &arena_, recovery);
     table_btree_ = new Btree();
     sub_mem_pending_node_index = (int*)malloc(sizeof(int) * arena_.sub_mem_count);
+    // subImmQueue = (MemTable*)malloc(sizeof(MemTable) * MAX_SUBIMMQUE_SIZE);
+    // subImmQueue.reserve(MAX_SUBIMMQUE_SIZE);
     sub_mem_pending_node = new std::vector<char*>[arena_.sub_mem_count];
     isQueBusy.store(0);
 
@@ -132,6 +140,15 @@ static const char* EncodeKey(std::string* scratch, const Slice& target) {
     PutVarint32(scratch, target.size());
     scratch->append(target.data(), target.size());
     return scratch->data();
+}
+
+static const int64_t SliceToint64(std::string* scratch, const Slice& target) {
+    scratch->clear();
+    PutVarint32(scratch, target.size());
+    scratch->append(target.data(), target.size());
+    std::string key = target.ToString();
+    int64_t ret = std::stoll(key);
+    return ret;
 }
 
 class MemTableIterator: public Iterator {
@@ -190,8 +207,57 @@ private:
     void operator=(const MemTableIterator&);
 };
 
+class BtreeInternalIterator: public Iterator {
+public:
+    explicit BtreeInternalIterator(Btree* table) : iter_(table) { }
+    virtual bool Valid() const { 
+        // std::cout<<"key: "<<iter_.key()<<",value: "<<(char *)(iter_.value())<<",valid: "<<iter_.Valid()<<std::endl; 
+        return iter_.Valid(); }
+    virtual void Seek(const Slice& k) { iter_.Seek(SliceToint64(&tmp_, k));}
+    virtual void SeekToFirst() { iter_.SeekToFirst();}
+    virtual void SeekToLast() { iter_.SeekToLast(); }
+    virtual void Next() { iter_.Next(); }
+    virtual void Prev() { iter_.Prev(); }
+
+    virtual Slice key() const { 
+        char* key_ptr = iter_.GetBtree()->getMapping(iter_.key());
+        return Slice(key_ptr,strlen(key_ptr)+7); 
+    }
+    virtual Slice value() const {
+        char* value_ptr = (char *)(iter_.value());
+        uint32_t value_length;
+        const char* val_ptr = GetVarint32Ptr(value_ptr,value_ptr+5,&value_length);
+        Slice value = Slice(val_ptr,value_length);
+        return value;
+    }
+    void* operator new(std::size_t sz) {
+        return malloc(sz);
+    }
+
+    void* operator new[](std::size_t sz) {
+        return malloc(sz);
+    }
+    void operator delete(void* ptr)
+    {
+        free(ptr);
+    }
+    virtual Status status() const { return Status::OK(); }
+
+private:
+    BtreeIterator iter_;
+    std::string tmp_;
+
+    // No copying allowed
+    BtreeInternalIterator(const BtreeInternalIterator&);
+    void operator=(const BtreeInternalIterator&);
+};
+
 Iterator* MemTable::NewIterator() {
     return new MemTableIterator(&table_);
+}
+
+Iterator* MemTable::NewBtreeIterator() {
+    return new BtreeInternalIterator(table_btree_);
 }
 
 Iterator* MemTable::NewSubMemIterator(int index){
@@ -284,7 +350,9 @@ retry:
     }
 
     pthread_mutex_lock(&mutex_alloc);
+    // pthread_spin_lock(&spinlock_alloc);
     sub_mem_pending_node[sub_mem_index].push_back(buf);
+    // pthread_spin_unlock(&spinlock_alloc);
     pthread_mutex_unlock(&mutex_alloc);
 /*
 #ifdef ENABLE_RECOVERY
@@ -350,23 +418,19 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
     Slice userkey = key.user_key();
     // std::cout<<"in MemTable::Get user key: "<<userkey.data()<<" size: "<<userkey.size()<<std::endl;
     int64_t key_data_int64 = int64_atoi(userkey);
+    // pthread_mutex_lock(&mutex_btree);
     BtreeIterator iter_btree(table_btree_);
     iter_btree.Seek(key_data_int64);
     if (iter_btree.Valid()) {
-        // entry format is:
-        //    klength  varint32
-        //    userkey  char[klength]
-        //    tag      uint64
-        //    vlength  varint32
-        //    value    char[vlength]
-        // Check that it belongs to same user key.  We do not check the
-        // sequence number since the Seek() call above should have skipped
-        // all entries with overly large sequence numbers.
 #if defined(USE_OFFSETS)
+        // get op type
         Slice internalkey = key.internal_key();
         ParsedInternalKey* parsed_key = new ParsedInternalKey();
         ParseInternalKey(internalkey, parsed_key);
+
+        uint32_t v_length;
         char *v = (char *)iter_btree.value();
+        const char* val_ptr = GetVarint32Ptr(v,v+5,&v_length);
 #else
         const char* entry = iter.key();
 #endif
@@ -378,16 +442,18 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
         const uint64_t tag = parsed_key->type;
         switch (static_cast<ValueType>(tag & 0xff)) {
         case kTypeValue: {
-            // Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
-            value->assign(v);
+            value->assign(val_ptr,v_length);
+            // pthread_mutex_unlock(&mutex_btree);
             return true;
         }
         case kTypeDeletion:
             *s = Status::NotFound(Slice());
+            // pthread_mutex_unlock(&mutex_btree);
             return true;
         }
         // }
     }
+    // pthread_mutex_unlock(&mutex_btree);
     return false;
 }
 

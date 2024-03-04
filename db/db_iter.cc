@@ -130,6 +130,8 @@ class DBIter: public Iterator {
 
 inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
   Slice k = iter_->key();
+  // std::cout<<"ParseKey k:"<<k.ToString()<<std::endl;
+  // std::cout<<"k size: "<<k.size()<<std::endl; // lack sequence part
   ssize_t n = k.size() + iter_->value().size();
   bytes_counter_ -= n;
   while (bytes_counter_ < 0) {
@@ -137,6 +139,7 @@ inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
     db_->RecordReadSample(k);
   }
   if (!ParseInternalKey(k, ikey)) {
+    // std::cout<<"error"<<std::endl;
     status_ = Status::Corruption("corrupted internal key in DBIter");
     return false;
   } else {
@@ -178,6 +181,7 @@ void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
   do {
     ParsedInternalKey ikey;
     if (ParseKey(&ikey) && ikey.sequence <= sequence_) {
+      // std::cout<<"ikey key: "<<ikey.user_key.ToString()<<std::endl;
       switch (ikey.type) {
         case kTypeDeletion:
           // Arrange to skip all upcoming entries for this key since

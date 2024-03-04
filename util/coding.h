@@ -114,7 +114,6 @@ inline int64_t int64_atoi_get(const char* str, size_t size) {
   std::cout<<*str<<std::endl;
   while(size-- > 0 && *str && *str >= '0' && *str <= '9') {
     val = val*10 + (*str++ - '0');
-    // std::cout<<"current val: "<<val<<std::endl;
   }
   return val;
 }
@@ -133,7 +132,7 @@ inline void int64ToChar(char dst[], int64_t num) {
 
 }  // namespace leveldb
 
-//实现itoa功能
+
 inline char* itoa(uint64_t val, char* buf, int base) {
   static char num[] = "0123456789abcdefghijklmnopqrstuvwxyz";
   char* p = buf;

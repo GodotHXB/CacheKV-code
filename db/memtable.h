@@ -77,7 +77,7 @@ public:
 	// iterator are internal keys encoded by AppendInternalKey in the
 	// db/format.{h,cc} module.
 	Iterator* NewIterator();
-
+	Iterator* NewBtreeIterator();
 	Iterator* NewSubMemIterator(int index);
 
 	// Add an entry into memtable that maps key to value at the
@@ -128,13 +128,11 @@ public:
 	Table sub_imm_skiplist;
     Table *sub_mem_skiplist;
 
-	// SkipList -> B+-Tree
-	Btree sub_imm_btree;
-    std::vector<Btree *>sub_mem_btree;
-
 	int *sub_mem_pending_node_index;
     std::vector<char*> *sub_mem_pending_node;
     std::deque<MemTable*> subImmQue;
+	// std::vector<MemTable*> subImmQueue;
+	// MemTable* subImmQueue;
 	std::atomic_bool isQueBusy;
 	
 	Table table_;

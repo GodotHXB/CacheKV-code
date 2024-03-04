@@ -15,9 +15,11 @@
 #include <time.h>
 #include <unistd.h>
 #include <vector>
-#include <db/btree_iterator.h>
+#include <map>
+#include "db/btree_iterator.h"
+// #include "db/db_impl.h"
 
-#define PAGESIZE 512
+#define PAGESIZE 1024
 
 #define CPU_FREQ_MHZ (1994)
 #define DELAY_IN_NS (1000)
@@ -40,6 +42,7 @@ namespace leveldb{
   private:
     Page *leftmost_ptr;     // 8 bytes
     Page *sibling_ptr;      // 8 bytes
+    Page *extend_ptr;       // 8 bytes
     uint32_t level;         // 4 bytes
     uint8_t switch_counter; // 1 bytes
     uint8_t is_deleted;     // 1 bytes
@@ -56,6 +59,7 @@ namespace leveldb{
 
       leftmost_ptr = NULL;
       sibling_ptr = NULL;
+      extend_ptr = NULL;
       switch_counter = 0;
       last_index = -1;
       is_deleted = false;
@@ -143,27 +147,37 @@ namespace leveldb{
   };
 
   class Btree {
-  private:
-    int height;
-    char *root;
+    private:
+      int height;
+      char *root;
+      bool inCompact;
+      bool inSplit;
+      std::vector<Page *>pending_split_page;
+      std::map< int64_t, char* >mapping;
 
-  public:
-    Btree();
-    void setNewRoot(char *);
-    void Insert(entry_key_t, char *);
-    void Insert(char *, char *);
-    void btree_insert_internal(char *, entry_key_t, char *, uint32_t);
-    void btree_delete(entry_key_t);
-    void btree_delete_internal(entry_key_t, char *, uint32_t, entry_key_t *,
-                              bool *, Page **);
-    char *btree_search(entry_key_t);
-    void btree_search_range(entry_key_t, entry_key_t, unsigned long *);
-    void printAll();
+    public:
+      Btree();
+      void setNewRoot(char *);
+      void Insert(entry_key_t, char *);
+      void Insert(char *, char *);
+      void btree_insert_internal(char *, entry_key_t, char *, uint32_t);
+      void btree_delete(entry_key_t);
+      void btree_delete_internal(entry_key_t, char *, uint32_t, entry_key_t *,
+                                bool *, Page **);
+      char *btree_search(entry_key_t);
+      void btree_search_range(entry_key_t, entry_key_t, unsigned long *);
+      void printAll();
+      char* getMapping(int64_t key_int64);
+      void setInCompact(bool st);
+      bool getInCompact();
+      void setInSplit(bool st);
+      bool getInSplit();
+      void splitPage(bool with_lock);
 
-    BtreeIterator* getIterator();
+      BtreeIterator* getIterator();
 
-    friend class Page;
-    friend class BtreeIterator;
+      friend class Page;
+      friend class BtreeIterator;
   };
 
 } //namespace leveldb
